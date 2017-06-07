@@ -1,7 +1,7 @@
 #define INITIAL_DATA_SIZE 20
 #define INITIAL_ENTRIES 20
 #define MAX_CHUNK 255
-#define BUCKETS 256
+#define BUCKETS 255
 #define HASH_SEED 42
 
 //FFS C!
@@ -10,17 +10,17 @@
 
 typedef struct mc_entry {
   ErlNifSInt64 start;
-  uint8_t count;
-  uint8_t size;
+  uint64_t count;
+  uint64_t size;
   ErlNifSInt64 *data;
   struct mc_entry *next;
 } mc_entry_t;
 
 typedef struct {
   size_t alloc;
-  mc_entry_t *head;
   uint8_t *name;
   uint16_t name_len;
+  mc_entry_t *head;
 } mc_metric_t;
 
 

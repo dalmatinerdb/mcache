@@ -48,13 +48,13 @@ bench_old(MetricCount, PointsPerMetric, PointsPerWrite) ->
 bench_test_() ->
     {timeout, 60,
      fun () ->
-             MetricCount = 10,
-             PointsPerMetric = 1000,
+             MetricCount = 1000,
+             PointsPerMetric = 10000,
              PointsPerWrite = 1,
              Args = [MetricCount, PointsPerMetric, PointsPerWrite],
              {TN, {WritesN, WrittenN}} = timer:tc(?MODULE, bench_new, Args),
-             io:format(user, "~p / ~p / ~p~n", [TN, WritesN, WrittenN]),
+             io:format(user, "New: ~p / ~p / ~p~n", [TN, WritesN, WrittenN]),
              {TO, {WritesO, WrittenO}} = timer:tc(?MODULE, bench_old, Args),
-             io:format(user, "~p / ~p / ~p~n", [TO, WritesO, WrittenO]),
+             io:format(user, "Old: ~p / ~p / ~p~n", [TO, WritesO, WrittenO]),
              ?assert(true)
      end}.
