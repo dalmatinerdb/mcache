@@ -21,6 +21,10 @@ age(H) ->
     mcache:age(H),
     H.
 
+pop(H) ->
+    mcache:pop(H),
+    H.
+
 get(H, N) ->
     mcache:get(H, N),
     H.
@@ -39,16 +43,23 @@ cache(MaxSize, Size) ->
        ?LETSHRINK(
           [H], [cache(MaxSize, Size -1)],
           frequency(
-            [{1, {call, ?MODULE, age, [H]}},
-             {10, {call, ?MODULE, stats, [H]}},
-             {100, {call, ?MODULE, insert, [H, utf8(), nat(), val()]}},
-             {20, {call, ?MODULE, get, [H, utf8()]}}]))).
+            [
+             %%{1,   {call, ?MODULE, age, [H]}},
+             %%{10,  {call, ?MODULE, stats, [H]}},
+             {100, {call, ?MODULE, insert, [H, utf8(), nat(), val()]}}
+             %%{15,  {call, ?MODULE, pop, [H]}},
+             %% {20,  {call, ?MODULE, get, [H, utf8()]}}
+            ]))).
+
+c_size() ->
+    ?LET(I, largeint(), erlang:abs(I)).
 
 prop_limit_ok() ->
     ?FORALL(
-       MaxSize, nat(),
+       MaxSize, c_size(),
        ?FORALL(Cache, cache(MaxSize),
                begin
+                   %% io:format("~p~n", [Cache]),
                    H = eval(Cache),
                    Stats = mcache:stats(H),
                    Max = proplists:get_value(max_alloc, Stats),

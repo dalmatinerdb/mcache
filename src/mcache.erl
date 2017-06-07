@@ -3,7 +3,7 @@
 -on_load(init/0).
 
 %% API exports
--export([new/1, insert/4, print/1, stats/1, get/2, age/1]).
+-export([new/1, pop/1, insert/4, print/1, stats/1, get/2, age/1]).
 
 -type mcache_handle() :: binary().
 
@@ -15,7 +15,11 @@
 -spec new(pos_integer()) ->
                  {ok, Handle::mcache_handle()} |
                  mcache_error().
+
 new(_MaxSize) ->
+    erlang:nif_error(nif_library_not_loaded).
+
+pop(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
 insert(_Handle, _Name, _Offset, _Value) ->

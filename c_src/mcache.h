@@ -1,6 +1,8 @@
 #define INITIAL_DATA_SIZE 20
-#define INITIAL_ENTRIES 100
+#define INITIAL_ENTRIES 20
 #define MAX_CHUNK 255
+#define BUCKETS 256
+#define HASH_SEED 42
 
 //FFS C!
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -15,23 +17,27 @@ typedef struct mc_entry {
 } mc_entry_t;
 
 typedef struct {
-  uint8_t *name;
-  uint16_t name_len;
   size_t alloc;
   mc_entry_t *head;
+  uint8_t *name;
+  uint16_t name_len;
 } mc_metric_t;
 
 
 typedef struct {
-  size_t alloc;
-  int size;
-  int count;
+  uint64_t size;
+  uint64_t count;
   mc_metric_t **metrics;
+} mc_bucket_t;
+
+typedef struct {
+  uint8_t v;
+  size_t alloc;
+  mc_bucket_t buckets[BUCKETS];
 } mc_gen_t;
 
 typedef struct {
   uint64_t max_alloc;
-
   mc_gen_t g0;
   mc_gen_t g1;
   mc_gen_t g2;
