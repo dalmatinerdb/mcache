@@ -37,9 +37,11 @@ bench_new(MetricCount, PointsPerMetric, PointsPerWrite) ->
     Mod = mc_new_cache,
     %% equivalent to cache points *2 to take into account ets overhead
     %% handled by
-    CacheBytes = ?CACHE_POINTS * MetricCount * 8 + 200094 * 8,
+    CacheBytes = 10*1024*1024,
     State = Mod:init(CacheBytes),
-    run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite).
+    R = run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite),
+    io:format(user, "~p~n", [mcache:stats(State)]),
+    R.
 
 bench_old(MetricCount, PointsPerMetric, PointsPerWrite) ->
     Mod = mc_old_cache,
@@ -58,7 +60,10 @@ bench_test_() ->
              Args = [MetricCount, PointsPerMetric, PointsPerWrite],
              {TN, {WritesN, WrittenN}} = timer:tc(?MODULE, bench_new, Args),
              io:format(user, "New: ~p / ~p / ~p~n", [TN, WritesN, WrittenN]),
-             {TO, {WritesO, WrittenO}} = timer:tc(?MODULE, bench_old, Args),
-             io:format(user, "Old: ~p / ~p / ~p~n", [TO, WritesO, WrittenO]),
+             %%{TO, {WritesO, WrittenO}} = timer:tc(?MODULE, bench_old, Args),
+             %%io:format(user, "Old: ~p / ~p / ~p~n", [TO, WritesO, WrittenO]),
              ?assert(true)
      end}.
+
+%%43720
+%%54000

@@ -86,7 +86,7 @@ prop_limit_ok() ->
        ?FORALL(Cache, cache(MaxSize),
                begin
                    %% io:format("~p~n", [Cache]),
-                   {H, _} = eval(Cache),
+                   {H, _, _} = eval(Cache),
                    Stats = mcache:stats(H),
                    Max = proplists:get_value(max_alloc, Stats),
                    Total = proplists:get_value(total_alloc, Stats),
