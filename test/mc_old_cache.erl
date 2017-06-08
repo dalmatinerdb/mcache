@@ -2,13 +2,16 @@
 
 -define(DATA_SIZE, 8).
 -record(state, {tbl, cache_size}).
--export([do_put/4, init/1]).
+-export([do_put/4, init/1, info/1]).
 
 init(CacheSize) ->
     #state{
        tbl = ets:new(?MODULE, [public, ordered_set]),
        cache_size = CacheSize
       }.
+
+info(#state{tbl = T}) ->
+    io:format(user, "~p~n", [ets:info(T)]).
 
 do_put(BM, Time, Value, #state{tbl = T, cache_size = CacheSize})
   when is_binary(BM), is_integer(Time) ->

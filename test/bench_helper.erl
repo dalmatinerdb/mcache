@@ -37,7 +37,7 @@ bench_new(MetricCount, PointsPerMetric, PointsPerWrite) ->
     Mod = mc_new_cache,
     %% equivalent to cache points *2 to take into account ets overhead
     %% handled by
-    CacheBytes = ?CACHE_POINTS * MetricCount * 8 * 2,
+    CacheBytes = ?CACHE_POINTS * MetricCount * 8 + 200094 * 8,
     State = Mod:init(CacheBytes),
     run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite).
 
@@ -45,7 +45,9 @@ bench_old(MetricCount, PointsPerMetric, PointsPerWrite) ->
     Mod = mc_old_cache,
     CachePoints = ?CACHE_POINTS,
     State = Mod:init(CachePoints),
-    run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite).
+    R = run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite),
+    Mod:info(State),
+    R.
 
 bench_test_() ->
     {timeout, 60,

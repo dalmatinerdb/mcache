@@ -1,6 +1,6 @@
 #define INITIAL_DATA_SIZE 40
 #define INITIAL_ENTRIES 20
-#define MAX_CHUNK 255
+#define MAX_CHUNK 512
 #define BUCKETS 128
 #define HASH_SEED 42
 
