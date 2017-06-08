@@ -35,7 +35,9 @@ write_all_metrics(Mod, State, MetricCount, I, PointsPerWrite, {C, W}) ->
 
 bench_new(MetricCount, PointsPerMetric, PointsPerWrite) ->
     Mod = mc_new_cache,
-    CacheBytes = ?CACHE_POINTS * MetricCount * 8, %% equivalent to cache points
+    %% equivalent to cache points *2 to take into account ets overhead
+    %% handled by
+    CacheBytes = ?CACHE_POINTS * MetricCount * 8 * 2,
     State = Mod:init(CacheBytes),
     run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite).
 
@@ -48,8 +50,8 @@ bench_old(MetricCount, PointsPerMetric, PointsPerWrite) ->
 bench_test_() ->
     {timeout, 60,
      fun () ->
-             MetricCount = 1000,
-             PointsPerMetric = 10000,
+             MetricCount = 10000,
+             PointsPerMetric = 1000,
              PointsPerWrite = 1,
              Args = [MetricCount, PointsPerMetric, PointsPerWrite],
              {TN, {WritesN, WrittenN}} = timer:tc(?MODULE, bench_new, Args),

@@ -123,7 +123,7 @@ static void enif_free_entry(mc_entry_t *e) {
 }
 
 
-static void enif_free_metric(mc_metric_t *m) {
+static void free_metric(mc_metric_t *m) {
   if (m->head) {
     enif_free_entry(m->head);
   }
@@ -134,7 +134,7 @@ static void enif_free_metric(mc_metric_t *m) {
 static void enif_free_gen(mc_gen_t gen) {
   for (int i = 0; i < BUCKETS; i++) {
     for (int j = 0; j < gen.buckets[i].count; j++) {
-      enif_free_metric(gen.buckets[i].metrics[j]);
+      free_metric(gen.buckets[i].metrics[j]);
     };
     enif_free(gen.buckets[i].metrics);
   }
@@ -237,7 +237,7 @@ mc_metric_t *find_metric_and_remove_g(mc_gen_t *gen, uint64_t bucket, uint16_t n
         gen->buckets[bucket].metrics[i] = gen->buckets[bucket].metrics[gen->buckets[bucket].count - 1];
       }
       gen->buckets[bucket].count--;
-      gen->alloc -= (m->alloc + sizeof(mc_metric_t));
+      gen->alloc -= m->alloc;
       return m;
     }
   }
@@ -261,10 +261,10 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t bucket, uint16_t name_len, uin
   // Itterate over the existig metrics and see if we have already
   // seen this one.
   mc_metric_t *metric = find_metric_g(cache->g0, bucket, name_len, name);
-  mc_bucket_t *b = &(cache->g0.buckets[bucket]);
   if (metric) {
     return metric;
   }
+  mc_bucket_t *b = &(cache->g0.buckets[bucket]);
   // We start with a small cache and grow it as required, so we need to
   // make sure the new index doesn't exceet the count. If it does
   // double the size of the cache.
@@ -282,13 +282,13 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t bucket, uint16_t name_len, uin
   }
   if (!metric) {
     metric = (mc_metric_t *) enif_alloc(sizeof(mc_metric_t));
-    metric->alloc = name_len;
+    metric->alloc = name_len + sizeof(mc_metric_t);
     metric->name = enif_alloc(name_len * sizeof(uint8_t));
     metric->name_len = name_len;
     memcpy(metric->name, name, name_len);
     metric->head = NULL;
   }
-  cache->g0.alloc += metric->alloc + sizeof(mc_metric_t);
+  cache->g0.alloc += metric->alloc;
   b->metrics[b->count] = metric;
   b->count++;
   return metric;
@@ -306,17 +306,23 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
     entry = enif_alloc(sizeof(mc_entry_t));
     entry->start = offset;
     entry->size = INITIAL_DATA_SIZE;
-    entry->data = (ErlNifSInt64 *) enif_alloc(INITIAL_DATA_SIZE * sizeof(ErlNifSInt64));
+    entry->data = (ErlNifSInt64 *) enif_alloc(alloc);
     entry->data[0] = v;
     entry->count = 1;
     entry->next = metric->head;
     metric->head = entry;
-
     metric->alloc += alloc + sizeof(mc_entry_t);
-    gen->alloc += alloc;
+    gen->alloc += alloc + sizeof(mc_entry_t);
+    if (!entry->next) {
+      metric->tail = entry;
+    }
     return;
   }
-  entry = metric->head;
+  if (offset > metric->tail->start) {
+    entry = metric->tail;
+  } else {
+    entry = metric->head;
+  }
   do {
     // if the offset is beyond the next chunks start
     // just go ahead and go for this chunk
@@ -336,20 +342,22 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
         (offset > entry->start + entry->count)
         ) {
       mc_entry_t *next = enif_alloc(sizeof(mc_entry_t));
+      uint64_t alloc = INITIAL_DATA_SIZE * sizeof(ErlNifSInt64);
       next->start = offset;
       next->size = INITIAL_DATA_SIZE;
-      next->data = (ErlNifSInt64 *) enif_alloc(INITIAL_DATA_SIZE * sizeof(ErlNifSInt64));
+      next->data = (ErlNifSInt64 *) enif_alloc(alloc);
       next->count = 0;
       next->next = entry->next;
       entry->next = next;
       entry = next;
-      metric->alloc += (INITIAL_DATA_SIZE * sizeof(ErlNifSInt64))  + sizeof(mc_entry_t);
-      gen->alloc += (INITIAL_DATA_SIZE * sizeof(ErlNifSInt64));
+      metric->alloc += alloc + sizeof(mc_entry_t);
+      gen->alloc += alloc + sizeof(mc_entry_t);
 
       continue;
     }
 
     if (entry->count >= entry->size) {
+
       // prevent oddmath we just  removethe oldsizeand then add
       // the new size
       metric->alloc -= (entry->size * sizeof(ErlNifSInt64));
@@ -366,40 +374,49 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
       metric->alloc += (entry->size * sizeof(ErlNifSInt64));
       gen->alloc += (entry->size * sizeof(ErlNifSInt64));
     }
-    entry->data[entry->count] = v;
-    entry->count++;
+
+    entry->data[offset - entry->start] = v;
+    if (offset - entry->start >= entry->count) {
+      entry->count++;
+    }
+
+    if (!entry->next) {
+      metric->tail = entry;
+    }
+
     return;
   } while (entry);
 }
 
-static ERL_NIF_TERM
-check_limit(ErlNifEnv* env, mcache_t *cache) {
+mc_metric_t *
+check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc) {
   mc_metric_t *metric = NULL;
   ERL_NIF_TERM data;
   ERL_NIF_TERM name;
   unsigned char *namep;
-  if (cache->max_alloc > cache->g0.alloc +
+  if (max_alloc > cache->g0.alloc +
       cache->g1.alloc +
       cache->g2.alloc) {
-    return enif_make_atom(env, "ok");
+    return NULL;
   }
-  fflush(stdout); 
   // If we don't have g2 entries we age so g1 becomes
   // g2
-  if (cache->g2.alloc == 0) {
-    age(cache);
+  mc_gen_t *gen = &(cache->g2);
+
+  if (gen->alloc == 0) {
+    gen = &(cache->g1);
   }
 
   // If we still have no g2 entries we aga again,
   // this way g0 effectively becomes g0
-  if (cache->g2.alloc == 0) {
-    age(cache);
+  if (gen->alloc == 0) {
+    gen = &(cache->g0);
   }
 
   // if we still have no g2 entries we know it's
   // all for nothing and just give up
-  if (cache->g2.alloc == 0) {
-    return enif_make_atom(env, "ok");
+  if (gen->alloc == 0) {
+    return NULL;
   }
 
   //we know we have at least 1 entrie so we grab the alst one
@@ -407,25 +424,15 @@ check_limit(ErlNifEnv* env, mcache_t *cache) {
 
   //TODO: This is not good!
   for (int i = 0; i < BUCKETS; i++) {
-    if (cache->g2.buckets[i].count > 0){
-      metric = cache->g2.buckets[i].metrics[cache->g2.buckets[i].count - 1];
-      cache->g2.buckets[i].count--;
-      cache->g2.alloc -= metric->alloc;
-      break;
+    if (gen->buckets[i].count > 0){
+      metric = gen->buckets[i].metrics[gen->buckets[i].count - 1];
+      gen->buckets[i].count--;
+      gen->alloc -= metric->alloc;
+      return metric;
     }
   }
-  if (! metric) {
-    return enif_make_atom(env, "ok");
-  }
+  return NULL;
   // now we work on exporting the metric
-  data = serialize_metric(env, metric);
-  namep = enif_make_new_binary(env, metric->name_len, &name);
-  memcpy(namep, metric->name, metric->name_len);
-  enif_free_metric(metric);
-  return  enif_make_tuple3(env,
-                           enif_make_atom(env, "overflow"),
-                           name,
-                           data);
 }
 
 static ERL_NIF_TERM
@@ -435,8 +442,12 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   ErlNifSInt64 offset;
   ErlNifBinary value;
   ErlNifBinary name_bin;
+  
+  ERL_NIF_TERM data;
+  ERL_NIF_TERM name;
+  unsigned char *namep;
+
   uint64_t bucket;
-  ERL_NIF_TERM result;
   if (argc != 4) {
     return enif_make_badarg(env);
   };
@@ -458,8 +469,20 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   bucket = get_bucket(name_bin);
   metric = get_metric(cache, bucket, name_bin.size, name_bin.data);
   add_point(&(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
-  result = check_limit(env, cache);
-  return result;
+
+  // We now check for overflow note that metric is re-used here!
+  metric = check_limit(env, cache, cache->max_alloc);
+  if (metric) {
+    data = serialize_metric(env, metric);
+    namep = enif_make_new_binary(env, metric->name_len, &name);
+    memcpy(namep, metric->name, metric->name_len);
+    free_metric(metric);
+    return  enif_make_tuple3(env,
+                             enif_make_atom(env, "overflow"),
+                             name,
+                             data);
+  }
+  return enif_make_atom(env, "ok");
 };
 
 static ERL_NIF_TERM
@@ -477,31 +500,20 @@ pop_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   };
 
-  // if we still have no g2 entries we know it's
-  // all for nothing and just give up
+  // We cheat here, we can create a 'pop' by just checkig for a 0 limit.
+  metric = check_limit(env, cache, 0);
+  if (metric) {
+    data = serialize_metric(env, metric);
+    namep = enif_make_new_binary(env, metric->name_len, &name);
+    memcpy(namep, metric->name, metric->name_len);
+    free_metric(metric);
+    return  enif_make_tuple3(env,
+                             enif_make_atom(env, "ok"),
+                             name,
+                             data);
+  }
+  return enif_make_atom(env, "undefined");
 
-  //we know we have at least 1 entrie so we grab the alst one
-  // and reduce the count and reduce the alloc;
-  for (int i = 0; i < BUCKETS; i++) {
-    if (cache->g2.buckets[i].count > 0){
-      metric = cache->g2.buckets[i].metrics[cache->g2.buckets[i].count - 1];
-      cache->g2.buckets[i].count--;
-      cache->g2.alloc -= metric->alloc;
-      break;
-    }
-  }
-  if (! metric) {
-    return enif_make_atom(env, "undefined");
-  }
-  // now we work on exporting the metric
-  data = serialize_metric(env, metric);
-  namep = enif_make_new_binary(env, metric->name_len, &name);
-  memcpy(namep, metric->name, metric->name_len);
-  enif_free_metric(metric);
-  return  enif_make_tuple3(env,
-                           enif_make_atom(env, "ok"),
-                           name,
-                           data);
 };
 
 static ERL_NIF_TERM
@@ -535,9 +547,9 @@ void print_gen(mc_gen_t gen) {
     size += gen.buckets[i].size;
     count += gen.buckets[i].count;
   };
-  printf("Cache [%d/%d]:\r\n",  count, size);
+  printf("Cache: [c: %d |s: %d|a: %d]:\r\n",  count, size, gen.alloc);
   for (int i = 0; i < BUCKETS; i++) {
-    for(int j = 0; i < gen.buckets[i].count; i++) {
+    for(int j = 0; j < gen.buckets[i].count; j++) {
       print_metric(gen.buckets[i].metrics[j]);
     };
   }
@@ -685,3 +697,14 @@ ERL_NIF_INIT(mcache, nif_funcs, &load, NULL, &upgrade, NULL);
   mcache:print(H).
   mcache:age(H).
 */
+
+/*
+  {ok, H} =  mcache:new(726).
+  mcache:insert(H, <<>>, 0, <<0,0,0,0,0,0,0,0>>).
+  mcache:print(H).
+  mcache:age(H).
+  mcache:print(H).
+  mcache:insert(H, <<>>, 0, <<0,0,0,0,0,0,0,0>>).
+  mcache:print(H).
+*/
+
