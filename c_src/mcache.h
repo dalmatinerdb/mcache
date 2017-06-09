@@ -1,4 +1,4 @@
-#define INITIAL_DATA_SIZE 40
+#define INITIAL_DATA_SIZE 64
 #define INITIAL_ENTRIES 8
 #define BUCKETS 128
 #define HASH_SEED 42
