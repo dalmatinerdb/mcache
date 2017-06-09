@@ -2,7 +2,8 @@
 #define INITIAL_ENTRIES 8
 #define BUCKETS 128
 #define HASH_SEED 42
-
+// age every 1.000.000 inserts
+#define AGE_CYCLE 1000000
 //FFS C!
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
@@ -38,6 +39,8 @@ typedef struct {
 
 typedef struct {
   uint64_t max_alloc;
+  uint32_t inserts;
+  uint32_t age;
   mc_gen_t g0;
   mc_gen_t g1;
   mc_gen_t g2;

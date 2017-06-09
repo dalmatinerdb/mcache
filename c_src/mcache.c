@@ -177,6 +177,8 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   };
   cache = (mcache_t *) enif_alloc_resource(mcache_t_handle, sizeof(mcache_t));
+  cache->inserts = 0;
+  cache->age = 0;
   cache->max_alloc = max_alloc;
   cache->g0.v = 0;
   cache->g0.alloc = 0;
@@ -489,6 +491,12 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   metric = get_metric(cache, hash, name_bin.size, name_bin.data);
   add_point(&(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
 
+  cache->inserts++;
+  if (cache->inserts > AGE_CYCLE) {
+    age(cache);
+    cache->age++;
+    cache->inserts = 0;
+  }
   // We now check for overflow note that metric is re-used here!
   metric = check_limit(env, cache, cache->max_alloc, bucket);
   if (metric) {
@@ -633,7 +641,13 @@ stats_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   };
 
-  return enif_make_list5(env,
+  return enif_make_list7(env,
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "age"),
+                                          enif_make_uint64(env, cache->age)),
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "inserts"),
+                                          enif_make_uint64(env, cache->inserts)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "max_alloc"),
                                           enif_make_uint64(env, cache->max_alloc)),
@@ -726,4 +740,3 @@ ERL_NIF_INIT(mcache, nif_funcs, &load, NULL, &upgrade, NULL);
   mcache:insert(H, <<>>, 0, <<0,0,0,0,0,0,0,0>>).
   mcache:print(H).
 */
-
