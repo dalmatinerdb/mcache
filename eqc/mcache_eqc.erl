@@ -7,7 +7,14 @@
 
 add_t(T, N, O, V) ->
     maps:update_with(
-      N, fun(Acc) -> maps:put(O, V, Acc) end,
+      N, fun(Acc) ->
+                 case maps:is_key(O, Acc) of
+                     true ->
+                         Acc;
+                     _ ->
+                         maps:put(O, V, Acc)
+                 end
+         end,
       maps:from_list([{O, V}]), T).
 
 new(Size) ->

@@ -2,26 +2,28 @@
 #include "mcache.h"
 #include <string.h>
 #include "stdio.h"
+#include "vbyte.h"
 
 #include "xxhash.h"
 
 ErlNifResourceType* mcache_t_handle;
 
 void print_entry(mc_entry_t *entry) {
-  uint8_t i;
-  if (!entry) {
+
+  if (/*!entry*/ 1) {
     printf("\r\n");
     return;
   }
   printf("    @%ld:", entry->start);
-
-  for (i=0; i < entry->count; i++) {
+  /*
+    for (int i = 0; i < entry->count; i++) {
     printf(" %ld", entry->data[i]);
-  };
-  printf("\r\n");
-  if (entry->next) {
+    };
+    printf("\r\n");
+    if (entry->next) {
     print_entry(entry->next);
-  };
+    };
+  */
 
 }
 
@@ -87,8 +89,8 @@ void age(mcache_t *cache) {
 static ERL_NIF_TERM serialize_entry(ErlNifEnv* env, mc_entry_t *entry) {
   ERL_NIF_TERM data;
   size_t to_copy = entry->count * sizeof(ErlNifSInt64);
-  unsigned char * datap = enif_make_new_binary(env, to_copy, &data);
-  memcpy(datap, entry->data, to_copy);
+  uint64_t *datap = (uint64_t *) enif_make_new_binary(env, to_copy, &data);
+  vbyte_uncompress_unsorted64(entry->data, datap, entry->count);
   return  enif_make_tuple2(env,
                            enif_make_uint64(env, entry->start),
                            data);
@@ -298,25 +300,25 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
   return metric;
 };
 
-void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSInt64* value) {
+void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, uint64_t* value) {
   // If eitehr we have no data yet or the current data is larger then
   // the offset we generate a new metric.
   // In both cases next will be the current head given that next might
   // be empty and it's needed to set next to empty for the first element.
   mc_entry_t *entry;
-  ErlNifSInt64 v = value[0];
+  uint64_t v = value[0];
   if((!metric->head) || metric->head->start > offset) {
-    size_t alloc = sizeof(ErlNifSInt64) * INITIAL_DATA_SIZE;
     entry = enif_alloc(sizeof(mc_entry_t));
     entry->start = offset;
     entry->size = INITIAL_DATA_SIZE;
-    entry->data = (ErlNifSInt64 *) enif_alloc(alloc);
-    entry->data[0] = v;
+    entry->data = (uint8_t *) enif_alloc(INITIAL_DATA_SIZE);
+    entry->end = entry->data;
+    entry->end += vbyte_append_unsorted64(entry->end, v);
     entry->count = 1;
     entry->next = metric->head;
     metric->head = entry;
-    metric->alloc += alloc + sizeof(mc_entry_t);
-    gen->alloc += alloc + sizeof(mc_entry_t);
+    metric->alloc += INITIAL_DATA_SIZE + sizeof(mc_entry_t);
+    gen->alloc += INITIAL_DATA_SIZE + sizeof(mc_entry_t);
     if (!entry->next) {
       metric->tail = entry;
     }
@@ -346,41 +348,47 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
         (offset > entry->start + entry->count)
         ) {
       mc_entry_t *next = enif_alloc(sizeof(mc_entry_t));
-      uint64_t alloc = INITIAL_DATA_SIZE * sizeof(ErlNifSInt64);
       next->start = offset;
       next->size = INITIAL_DATA_SIZE;
-      next->data = (ErlNifSInt64 *) enif_alloc(alloc);
-      next->count = 0;
+      next->data = (uint8_t *) enif_alloc(INITIAL_DATA_SIZE);
+      next->end = next->data;
+      next->end += vbyte_append_unsorted64(next->data, v);
+      next->count = 1;
       next->next = entry->next;
       entry->next = next;
       entry = next;
-      metric->alloc += alloc + sizeof(mc_entry_t);
-      gen->alloc += alloc + sizeof(mc_entry_t);
+      metric->alloc += INITIAL_DATA_SIZE + sizeof(mc_entry_t);
+      gen->alloc += INITIAL_DATA_SIZE + sizeof(mc_entry_t);
+      //printf("[2] start %p @ %d\r\n", entry->data, entry->size);
+      //printf("[2] end %p\r\n", entry->end);
 
-      continue;
+      return;
     }
 
-    if (entry->count >= entry->size) {
-
+    if (entry->end + sizeof(uint64_t)*2 >=  entry->data + entry->size) {
       // prevent oddmath we just  removethe oldsizeand then add
       // the new size
-      metric->alloc -= (entry->size * sizeof(ErlNifSInt64));
-      gen->alloc -= (entry->size * sizeof(ErlNifSInt64));
+      metric->alloc -= entry->size;
+      gen->alloc -= entry->size;
 
 
       uint64_t new_size = entry->size * 2;// MAX(entry->size * 2, MAX_CHUNK);
-      ErlNifSInt64 *new_data = (ErlNifSInt64 *) enif_alloc(new_size * sizeof(ErlNifSInt64)) ;
-      memcpy(new_data, entry->data, entry->size * sizeof(ErlNifSInt64));
+      uint8_t *new_data = (uint8_t *) enif_alloc(new_size) ;
+      memcpy(new_data, entry->data, entry->size);
+      entry->end = new_data + entry->count;
       enif_free(entry->data);
       entry->data = new_data;
       entry->size = new_size;
 
-      metric->alloc += (entry->size * sizeof(ErlNifSInt64));
-      gen->alloc += (entry->size * sizeof(ErlNifSInt64));
+      metric->alloc += entry->size;
+      gen->alloc += entry->size;
     }
 
-    entry->data[offset - entry->start] = v;
     if (offset - entry->start >= entry->count) {
+      //printf("start %p @ %d\r\n", entry->data, entry->size);
+      //printf("end %p ->", entry->end);
+      entry->end += vbyte_append_unsorted64(entry->end, v);
+      //printf("%p\r\n", entry->end);
       entry->count++;
     }
 
@@ -395,9 +403,6 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
 mc_metric_t *
 check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket) {
   mc_metric_t *metric = NULL;
-  ERL_NIF_TERM data;
-  ERL_NIF_TERM name;
-  unsigned char *namep;
   if (max_alloc > cache->g0.alloc +
       cache->g1.alloc +
       cache->g2.alloc) {
@@ -483,13 +488,13 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (!enif_inspect_binary(env, argv[3], &value)) {
     return enif_make_badarg(env);
   };
-  if (value.size % sizeof(ErlNifSInt64) && value.size >= 8) {
+  if (value.size % sizeof(uint64_t) && value.size >= 8) {
     return enif_make_badarg(env);
   }
   uint64_t hash = XXH64(name_bin.data, name_bin.size, HASH_SEED) ;
   bucket = hash % BUCKETS;
   metric = get_metric(cache, hash, name_bin.size, name_bin.data);
-  add_point(&(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
+  add_point(&(cache->g0), metric, offset, (uint64_t *) value.data);
 
   cache->inserts++;
   if (cache->inserts > AGE_CYCLE) {
@@ -548,7 +553,6 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   mcache_t *cache;
   mc_metric_t *metric;
   ErlNifBinary name_bin;
-  uint64_t bucket;
   if (argc != 2) {
     return enif_make_badarg(env);
   };
@@ -688,6 +692,7 @@ ERL_NIF_INIT(mcache, nif_funcs, &load, NULL, &upgrade, NULL);
 /*
   {ok, H} = mcache:new(50*10*8).
   mcache:insert(H, <<"1">>,  1, <<1:64>>).
+  mcache:insert(H, <<"1">>,  2, <<1:64>>).
   mcache:insert(H, <<"2">>,  1, <<1:64>>).
   mcache:insert(H, <<"3">>,  1, <<1:64>>).
   mcache:insert(H, <<"4">>,  1, <<1:64>>).

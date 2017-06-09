@@ -12,7 +12,8 @@ typedef struct  mc_entry {
   ErlNifSInt64 start;
   uint32_t count;
   uint32_t size;
-  ErlNifSInt64 *data;
+  uint8_t *data;
+  uint8_t *end;
   struct mc_entry *next;
 } mc_entry_t;
 
@@ -45,3 +46,10 @@ typedef struct {
   mc_gen_t g1;
   mc_gen_t g2;
 } mcache_t;
+
+/*
+  {ok, H} = mcache:new(50*10*8).
+  mcache:insert(H, <<"1">>,  1, <<1:64>>).
+  mcache:insert(H, <<"1">>,  2, <<2:64>>).
+  mcache:get(H, <<"1">>).
+*/
