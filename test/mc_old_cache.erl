@@ -11,7 +11,7 @@ init(CacheSize) ->
       }.
 
 info(#state{tbl = T}) ->
-    io:format(user, "~p~n", [ets:info(T)]).
+    ets:info(T).
 
 do_put(BM, Time, Value, #state{tbl = T, cache_size = CacheSize})
   when is_binary(BM), is_integer(Time) ->

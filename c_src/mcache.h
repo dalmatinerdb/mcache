@@ -1,6 +1,5 @@
 #define INITIAL_DATA_SIZE 40
 #define INITIAL_ENTRIES 8
-#define MAX_CHUNK 512
 #define BUCKETS 128
 #define HASH_SEED 42
 
@@ -19,11 +18,11 @@ typedef struct  mc_entry {
 typedef struct {
   size_t alloc;
   uint8_t *name;
+  uint64_t hash;
   uint16_t name_len;
   mc_entry_t *head;
   mc_entry_t *tail;
 } mc_metric_t;
-
 
 typedef struct {
   uint32_t size;

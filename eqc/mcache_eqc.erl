@@ -158,7 +158,6 @@ prop_map_comp() ->
        MaxSize, c_size(),
        ?FORALL(Cache, cache(MaxSize),
                begin
-                   %% io:format("~p~n", [Cache]),
                    {H, T, Ds} = eval(Cache),
                    TreeKs = all_keys_t(T),
                    CacheKs = all_keys_c(H, []),

@@ -31,37 +31,67 @@ write_all_metrics(Mod, State, MetricCount, I, PointsPerWrite, {C, W}) ->
             W + lists:sum([N || {write, N} <- Res])},
     write_all_metrics(Mod, State, MetricCount - 1, I, PointsPerWrite, Acc1).
 
--define(CACHE_POINTS, 50).
+-define(CACHE_POINTS, 100).
 
 bench_new(MetricCount, PointsPerMetric, PointsPerWrite) ->
     Mod = mc_new_cache,
     %% equivalent to cache points *2 to take into account ets overhead
     %% handled by
-    CacheBytes = 10*1024*1024,
+    %% MetricCount * 8 * 100 (100 64 byte values)
+    CacheBytes = MetricCount * 8 * ?CACHE_POINTS
+        %% for the the names (average 4 bytes, ignore length and so on)
+        + MetricCount * 4
+        %% start, end and false value
+        + MetricCount * 3
+        %% ETS overhead (measured as 200094 for 10k then scale)
+        + (200094 * 8 div 10000) * MetricCount
+        ,
     State = Mod:init(CacheBytes),
-    R = run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite),
-    io:format(user, "~p~n", [mcache:stats(State)]),
-    R.
+    {WritesO, WrittenO} = run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite),
+    %%io:format(user, "~p~n", [mcache:stats(State)]),
+    {WritesO, WrittenO, CacheBytes}.
 
 bench_old(MetricCount, PointsPerMetric, PointsPerWrite) ->
     Mod = mc_old_cache,
     CachePoints = ?CACHE_POINTS,
     State = Mod:init(CachePoints),
-    R = run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite),
-    Mod:info(State),
-    R.
+    {WritesO, WrittenO} = run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite),
+    Info = Mod:info(State),
+    Mem = proplists:get_value(memory, Info),
+    Cnt = proplists:get_value(size, Info),
+    {WritesO, WrittenO, Mem * 8 + Cnt * ?CACHE_POINTS * 8 + MetricCount * 4
+     + MetricCount * 3}.
 
-bench_test_() ->
+-define(MCOUNT, 10000).
+-define(PPM, 1000).
+-define(PPW, 1).
+bench_new_test_() ->
     {timeout, 60,
      fun () ->
-             MetricCount = 10000,
-             PointsPerMetric = 1000,
-             PointsPerWrite = 1,
+             MetricCount = ?MCOUNT,
+             PointsPerMetric = ?PPM,
+             PointsPerWrite = ?PPW,
              Args = [MetricCount, PointsPerMetric, PointsPerWrite],
-             {TN, {WritesN, WrittenN}} = timer:tc(?MODULE, bench_new, Args),
-             io:format(user, "New: ~p / ~p / ~p~n", [TN, WritesN, WrittenN]),
-             %%{TO, {WritesO, WrittenO}} = timer:tc(?MODULE, bench_old, Args),
-             %%io:format(user, "Old: ~p / ~p / ~p~n", [TO, WritesO, WrittenO]),
+             {TN, {WritesN, WrittenN, Mem}} =
+                 timer:tc(?MODULE, bench_new, Args),
+             io:format(user, "~n     ~20s | ~20s | ~20s | ~20s",
+                       ["Time", "Writes", "Written Bytes", "Memory"]),
+             io:format(user, "~nNew: ~20b | ~20b | ~20b | ~20b",
+                       [TN, WritesN, WrittenN, Mem]),
+             ?assert(true)
+     end}.
+
+bench_old_test_() ->
+    {timeout, 60,
+     fun () ->
+             MetricCount = ?MCOUNT,
+             PointsPerMetric = ?PPM,
+             PointsPerWrite = ?PPW,
+             Args = [MetricCount, PointsPerMetric, PointsPerWrite],
+             {TO, {WritesO, WrittenO, Mem}} =
+                 timer:tc(?MODULE, bench_old, Args),
+             io:format(user, "~nOld: ~20b | ~20b | ~20b | ~20b",
+                       [TO, WritesO, WrittenO, Mem]),
              ?assert(true)
      end}.
 

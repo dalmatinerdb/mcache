@@ -47,10 +47,6 @@ int init_buckets(/*@out@*/ mc_gen_t *gen) {
   return 1;
 }
 
-uint64_t get_bucket(/*@unused@*/ ErlNifBinary bin) {
-  return XXH64(bin.data, bin.size, HASH_SEED) % BUCKETS;
-};
-
 void age(mcache_t *cache) {
   int i;
   for (i = 0; i < BUCKETS; i++) {
@@ -199,12 +195,14 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 };
 
 
-mc_metric_t *find_metric_g(mc_gen_t gen, uint64_t bucket, uint16_t name_len, uint8_t *name) {
+mc_metric_t *find_metric_g(mc_gen_t gen, uint64_t hash, uint16_t name_len, uint8_t *name) {
   // Itterate over the existig metrics and see if we have already
   // seen this one.
+  uint64_t bucket = hash % BUCKETS;
   for (int i = 0; i < gen.buckets[bucket].count; i++) {
     mc_metric_t *m = gen.buckets[bucket].metrics[i];
     if (m->name_len == name_len
+        && m->hash == hash
         && memcmp(m->name, name, name_len) == 0) {
       return m;
     }
@@ -212,26 +210,28 @@ mc_metric_t *find_metric_g(mc_gen_t gen, uint64_t bucket, uint16_t name_len, uin
   return NULL;
 };
 
-mc_metric_t *find_metric(mcache_t *cache, uint64_t bucket, uint16_t name_len, uint8_t *name) {
-  mc_metric_t *res = find_metric_g(cache->g0, bucket, name_len, name);
+mc_metric_t *find_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
+  mc_metric_t *res = find_metric_g(cache->g0, hash, name_len, name);
   if(!res) {
-    res = find_metric_g(cache->g1, bucket, name_len, name);
+    res = find_metric_g(cache->g1, hash, name_len, name);
     if(!res) {
-      res = find_metric_g(cache->g2, bucket, name_len, name);
+      res = find_metric_g(cache->g2, hash, name_len, name);
     }
   }
   return res;
 }
 
 
-mc_metric_t *find_metric_and_remove_g(mc_gen_t *gen, uint64_t bucket, uint16_t name_len, uint8_t *name) {
+mc_metric_t *find_metric_and_remove_g(mc_gen_t *gen, uint64_t hash, uint16_t name_len, uint8_t *name) {
   int i = 0;
+  uint64_t bucket = hash % BUCKETS;
   // Itterate over the existig metrics and see if we have already
   // seen this one.
 
   for (i = 0; i < gen->buckets[bucket].count; i++) {
     mc_metric_t *m = gen->buckets[bucket].metrics[i];
     if (m->name_len == name_len
+        && m->hash == hash
         && memcmp(m->name, name, name_len) == 0) {
       if (i != gen->buckets[bucket].count - 1) {
         gen->buckets[bucket].metrics[i] = gen->buckets[bucket].metrics[gen->buckets[bucket].count - 1];
@@ -244,23 +244,24 @@ mc_metric_t *find_metric_and_remove_g(mc_gen_t *gen, uint64_t bucket, uint16_t n
   return NULL;
 };
 
-mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t bucket, uint16_t name_len, uint8_t *name) {
-  mc_metric_t *res = find_metric_and_remove_g(&(cache->g0), bucket, name_len, name);
+mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
+  mc_metric_t *res = find_metric_and_remove_g(&(cache->g0), hash, name_len, name);
   if(!res) {
-    res = find_metric_and_remove_g(&(cache->g1), bucket, name_len, name);
+    res = find_metric_and_remove_g(&(cache->g1), hash, name_len, name);
     if(!res) {
-      res = find_metric_and_remove_g(&(cache->g2), bucket, name_len, name);
+      res = find_metric_and_remove_g(&(cache->g2), hash, name_len, name);
     };
   };
   return res;
 }
 
 
-mc_metric_t *get_metric(mcache_t *cache, uint64_t bucket, uint16_t name_len, uint8_t *name) {
+mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
 
+  uint64_t bucket = hash % BUCKETS;
   // Itterate over the existig metrics and see if we have already
   // seen this one.
-  mc_metric_t *metric = find_metric_g(cache->g0, bucket, name_len, name);
+  mc_metric_t *metric = find_metric_g(cache->g0, hash, name_len, name);
   if (metric) {
     return metric;
   }
@@ -276,14 +277,15 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t bucket, uint16_t name_len, uin
     b->size = b->size * 2;
   }
   // we havn't seen the metric so we'll create a new one.
-  metric = find_metric_and_remove_g(&(cache->g1), bucket, name_len, name);
+  metric = find_metric_and_remove_g(&(cache->g1), hash, name_len, name);
   if (!metric) {
-    metric = find_metric_and_remove_g(&(cache->g2), bucket, name_len, name);
+    metric = find_metric_and_remove_g(&(cache->g2), hash, name_len, name);
   }
   if (!metric) {
     metric = (mc_metric_t *) enif_alloc(sizeof(mc_metric_t));
     metric->alloc = name_len + sizeof(mc_metric_t);
     metric->name = enif_alloc(name_len * sizeof(uint8_t));
+    metric->hash = hash;
     metric->name_len = name_len;
     memcpy(metric->name, name, name_len);
     metric->head = NULL;
@@ -336,8 +338,8 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
 
     // we allocate a new chunk behind this and continue with that.
     if (
-        // If we have an offset that would exceedthis chunks max sie
-        (offset - entry->start > MAX_CHUNK) ||
+        /* // If we have an offset that would exceedthis chunks max sie */
+        /* (offset - entry->start > MAX_CHUNK) || */
         // or we'd have gaps
         (offset > entry->start + entry->count)
         ) {
@@ -364,7 +366,7 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
       gen->alloc -= (entry->size * sizeof(ErlNifSInt64));
 
 
-      uint64_t new_size = MAX(entry->size * 2, MAX_CHUNK);
+      uint64_t new_size = entry->size * 2;// MAX(entry->size * 2, MAX_CHUNK);
       ErlNifSInt64 *new_data = (ErlNifSInt64 *) enif_alloc(new_size * sizeof(ErlNifSInt64)) ;
       memcpy(new_data, entry->data, entry->size * sizeof(ErlNifSInt64));
       enif_free(entry->data);
@@ -389,7 +391,7 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
 }
 
 mc_metric_t *
-check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc) {
+check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket) {
   mc_metric_t *metric = NULL;
   ERL_NIF_TERM data;
   ERL_NIF_TERM name;
@@ -424,9 +426,25 @@ check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc) {
 
   //TODO: This is not good!
   for (int i = 0; i < BUCKETS; i++) {
-    if (gen->buckets[i].count > 0){
-      metric = gen->buckets[i].metrics[gen->buckets[i].count - 1];
-      gen->buckets[i].count--;
+    // We itterate through all buckets starting after the bucket we just edited
+    // that way we avoid always changing the same buket over and over
+    int b = (i + bucket + 1) % BUCKETS;
+    if (gen->buckets[b].count > 0) {
+      // If we found a non empty bucket we find the largest metric in there to
+      // evict, that way we can can free up the 'most sensible' thing;
+      int largest_idx = 0;
+      mc_bucket_t *bkt = &(gen->buckets[b]);
+      metric = bkt->metrics[0];
+      for (int j = 1; j < bkt->count; j++) {
+        if (bkt->metrics[j]->alloc >= metric->alloc) {
+          largest_idx = j;
+          metric = bkt->metrics[j];
+        }
+      }
+      if (largest_idx != bkt->count - 1) {
+        bkt->metrics[largest_idx] = bkt->metrics[gen->buckets[b].count - 1];
+      }
+      bkt->count--;
       gen->alloc -= metric->alloc;
       return metric;
     }
@@ -442,7 +460,7 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   ErlNifSInt64 offset;
   ErlNifBinary value;
   ErlNifBinary name_bin;
-  
+
   ERL_NIF_TERM data;
   ERL_NIF_TERM name;
   unsigned char *namep;
@@ -466,12 +484,13 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (value.size % sizeof(ErlNifSInt64) && value.size >= 8) {
     return enif_make_badarg(env);
   }
-  bucket = get_bucket(name_bin);
-  metric = get_metric(cache, bucket, name_bin.size, name_bin.data);
+  uint64_t hash = XXH64(name_bin.data, name_bin.size, HASH_SEED) ;
+  bucket = hash % BUCKETS;
+  metric = get_metric(cache, hash, name_bin.size, name_bin.data);
   add_point(&(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
 
   // We now check for overflow note that metric is re-used here!
-  metric = check_limit(env, cache, cache->max_alloc);
+  metric = check_limit(env, cache, cache->max_alloc, bucket);
   if (metric) {
     data = serialize_metric(env, metric);
     namep = enif_make_new_binary(env, metric->name_len, &name);
@@ -501,7 +520,7 @@ pop_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   };
 
   // We cheat here, we can create a 'pop' by just checkig for a 0 limit.
-  metric = check_limit(env, cache, 0);
+  metric = check_limit(env, cache, 0, 0);
   if (metric) {
     data = serialize_metric(env, metric);
     namep = enif_make_new_binary(env, metric->name_len, &name);
@@ -533,8 +552,8 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   };
 
-  bucket = get_bucket(name_bin);
-  metric = find_metric(cache, bucket, name_bin.size, name_bin.data);
+  uint64_t hash = XXH64(name_bin.data, name_bin.size, HASH_SEED) ;
+  metric = find_metric(cache, hash, name_bin.size, name_bin.data);
   return  enif_make_tuple2(env,
                            enif_make_atom(env, "ok"),
                            serialize_metric(env, metric));
@@ -547,7 +566,7 @@ void print_gen(mc_gen_t gen) {
     size += gen.buckets[i].size;
     count += gen.buckets[i].count;
   };
-  printf("Cache: [c: %d |s: %d|a: %d]:\r\n",  count, size, gen.alloc);
+  printf("Cache: [c: %d |s: %d|a: %zu]:\r\n",  count, size, gen.alloc);
   for (int i = 0; i < BUCKETS; i++) {
     for(int j = 0; j < gen.buckets[i].count; j++) {
       print_metric(gen.buckets[i].metrics[j]);

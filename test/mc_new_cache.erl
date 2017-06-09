@@ -19,6 +19,13 @@ do_put(BM, Time, <<V:8/binary, Rest/binary>>, C, Acc)
                ok ->
                    Acc;
                {overflow, _, Overflow} ->
+                   case length(Overflow) of
+                       1 ->
+                           ok;
+                       N ->
+                           io:format(user, "Multi element write: ~p~n",
+                                     [Overflow])
+                   end,
                    lists:foldl(fun({_, Vs}, AccIn) ->
                                       [{write, byte_size(Vs)}
                                        | AccIn]
