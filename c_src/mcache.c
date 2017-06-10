@@ -36,7 +36,7 @@ void print_metric(mc_metric_t *metric) {
 
 int init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
   int i;
-  //gen->buckets = (mc_bucket_t *) enif_alloc(conf.buckets * sizeof(mc_bucket_t *));
+  gen->buckets = (mc_bucket_t *) enif_alloc(conf.buckets * sizeof(mc_bucket_t));
   for (i = 0; i < conf.buckets; i++) {
     gen->buckets[i].size = conf.initial_entries;
     gen->buckets[i].count = 0;
@@ -135,7 +135,7 @@ static void free_gen(mc_conf_t conf, mc_gen_t gen) {
     };
     enif_free(gen.buckets[i].metrics);
   }
-  //enif_free(gen.buckets);
+  enif_free(gen.buckets);
 };
 
 static void cache_dtor(ErlNifEnv* env, void* handle) {
@@ -168,7 +168,7 @@ upgrade(ErlNifEnv* env, void** priv, void** old_priv, ERL_NIF_TERM load_info)
 static ERL_NIF_TERM
 new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
-    mcache_t *cache;
+  mcache_t *cache;
   ErlNifUInt64 max_alloc;
   ErlNifUInt64 buckets;
   ErlNifUInt64 age_cycle;
@@ -197,17 +197,20 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
   cache = (mcache_t *) enif_alloc_resource(mcache_t_handle, sizeof(mcache_t));
 
+  // Set up the config
   cache->conf.max_alloc = max_alloc;
   cache->conf.buckets = buckets;
-  cache->conf.buckets = 128; // TODO: remove just for test
   cache->conf.age_cycle = age_cycle;
 
   cache->conf.initial_data_size = initial_data_size;
   cache->conf.initial_entries = initial_entries;
   cache->conf.hash_seed = hash_seed;
 
+  // some cache wqide counters
   cache->inserts = 0;
   cache->age = 0;
+
+  //now set up the tree genreations
   cache->g0.v = 0;
   cache->g0.alloc = 0;
   init_buckets(cache->conf, &(cache->g0));

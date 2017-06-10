@@ -1,7 +1,6 @@
 #ifndef MC_H_INCLUDED
 #define MC_H_INCLUDED
 
-#define BUCKETS 128
 // age every 1.000.000 inserts
 //FFS C!
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -32,7 +31,7 @@ typedef struct {
 typedef struct {
   uint8_t v;
   size_t alloc;
-  mc_bucket_t buckets[BUCKETS];
+  mc_bucket_t *buckets;
 } mc_gen_t;
 
 typedef struct {
