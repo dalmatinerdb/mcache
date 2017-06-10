@@ -3,9 +3,43 @@
 -on_load(init/0).
 
 %% API exports
--export([new/2, pop/1, insert/4, print/1, stats/1, get/2, age/1]).
+-export([new/2, pop/1, insert/4, print/1, stats/1, get/2, age/1,
+         take/2
+        %%, is_empty/1, delete_prefix/2
+        ]).
 
 -type mcache_handle() :: binary().
+-type key() :: binary().
+-type offset() :: non_neg_integer().
+-type values() :: <<_:_*64>>.
+-type chunk() :: {offset(), values()}.
+-type chunks() :: [chunk()].
+
+-type conf_stats() ::
+        [
+         {buckets, non_neg_integer()} |
+         {age_cycle, non_neg_integer()} |
+         {initial_data_size, non_neg_integer()} |
+         {initial_entries, non_neg_integer()} |
+         {max_alloc, non_neg_integer()}
+        ].
+
+-type gen_stats() ::
+        [
+         {alloc, non_neg_integer()} |
+         {count, non_neg_integer()} |
+         {size, non_neg_integer()}
+        ].
+-type stats() ::
+        [
+         {age, non_neg_integer()} |
+         {inserts, non_neg_integer()} |
+         {conf, conf_stats()} |
+         {total_alloc, non_neg_integer()} |
+         {gen0, gen_stats()} |
+         {gen1, gen_stats()} |
+         {gen2, gen_stats()}
+        ].
 
 -type mcache_error() :: {error, term()}.
 -type mc_opt() :: {buckets, pos_integer()} |
@@ -30,32 +64,57 @@ new(MaxAlloc, Opts) ->
     HashSeed = proplists:get_value(hash_seed, Opts, 42),
       new(MaxAlloc, Buckets, AgeCycle, InitialDataSize, InitialEntries,
           HashSeed).
-new(_MaxAlloc, _Buckets, _AgeCycle, _InitialDataSize, _InitialEntries,
-    _HashSeed) ->
-    erlang:nif_error(nif_library_not_loaded).
+-spec pop(mcache_handle()) ->
+                 undefined |
+                 {ok, key(), chunks()}.
 
 pop(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
+-spec insert(mcache_handle(), key(), offset(), values()) ->
+                 undefined |
+                 {overflow, key(), chunks()}.
 insert(_Handle, _Name, _Offset, _Value) ->
     erlang:nif_error(nif_library_not_loaded).
+
+-spec get(mcache_handle(), key()) ->
+                 undefined |
+                 {ok, key(), chunks()}.
 
 get(_Handle, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
 
-print(_Handle) ->
+-spec take(mcache_handle(), key()) ->
+                 undefined |
+                 {ok, key(), chunks()}.
+
+take(_Handle, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
 
+
+-spec stats(mcache_handle()) ->
+                   stats().
 stats(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
 
+-spec age(mcache_handle()) ->
+                 ok.
 age(_Handle) ->
+    erlang:nif_error(nif_library_not_loaded).
+
+-spec print(mcache_handle()) ->
+                   ok.
+print(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+new(_MaxAlloc, _Buckets, _AgeCycle, _InitialDataSize, _InitialEntries,
+    _HashSeed) ->
+    erlang:nif_error(nif_library_not_loaded).
 
 init() ->
     PrivDir = case code:priv_dir(?MODULE) of

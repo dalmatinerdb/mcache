@@ -643,9 +643,40 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
   uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
   metric = find_metric(cache, hash, name_bin.size, name_bin.data);
-  return  enif_make_tuple2(env,
-                           enif_make_atom(env, "ok"),
-                           serialize_metric(env, metric));
+  if (metric) {
+    return  enif_make_tuple2(env,
+                             enif_make_atom(env, "ok"),
+                             serialize_metric(env, metric));
+  } else {
+    return enif_make_atom(env, "undefined");
+  }
+};
+
+static ERL_NIF_TERM
+take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  mcache_t *cache;
+  mc_metric_t *metric;
+  ErlNifBinary name_bin;
+  if (argc != 2) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
+    return enif_make_badarg(env);
+  };
+
+  if (!enif_inspect_binary(env, argv[1], &name_bin)) {
+    return enif_make_badarg(env);
+  };
+
+  uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
+  metric = find_metric_and_remove(cache, hash, name_bin.size, name_bin.data);
+  if (metric) {
+    return  enif_make_tuple2(env,
+                             enif_make_atom(env, "ok"),
+                             serialize_metric(env, metric));
+  } else {
+    return enif_make_atom(env, "undefined");
+  }
 };
 
 void print_gen(mc_conf_t conf, mc_gen_t gen) {
@@ -778,6 +809,7 @@ static ErlNifFunc nif_funcs[] = {
   {"age", 1, age_nif},
   {"pop", 1, pop_nif},
   {"get", 2, get_nif},
+  {"take", 2, take_nif},
   {"insert", 4, insert_nif},
 };
 

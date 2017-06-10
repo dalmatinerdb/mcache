@@ -52,6 +52,16 @@ pop({H, T, Ds}) ->
             {H, T1, [{shrink_t(Data), shrink_t(maps:get(K, T))} | Ds]}
     end.
 
+take({H, T, Ds}, N) ->
+    case mcache:take(H, N) of
+        undefined ->
+            {H, T, Ds};
+        %% TODO: record removes!
+        {ok, Data} ->
+            T1 = maps:remove(N, T),
+            {H, T1, [{shrink_t(Data), shrink_t(maps:get(N, T))} | Ds]}
+    end.
+
 get({H, T, Ds}, N) ->
     mcache:get(H, N),
     {H, T, Ds}.
@@ -94,7 +104,8 @@ cache(MaxSize, Opts, Size) ->
              {10,  {call, ?MODULE, stats, [H]}},
              {100, {call, ?MODULE, insert, [H, key(), v_time(), val()]}},
              {15,  {call, ?MODULE, pop, [H]}},
-             {20,  {call, ?MODULE, get, [H, utf8()]}}
+             {15,  {call, ?MODULE, take, [H, key()]}},
+             {20,  {call, ?MODULE, get, [H, key()]}}
             ]))).
 
 c_size() ->
