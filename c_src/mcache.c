@@ -509,7 +509,7 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (value.size % sizeof(ErlNifSInt64) && value.size >= 8) {
     return enif_make_badarg(env);
   }
-  uint64_t hash = XXH64(name_bin.data, name_bin.size, HASH_SEED) ;
+  uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
   bucket = hash % BUCKETS;
   metric = get_metric(cache, hash, name_bin.size, name_bin.data);
   add_point(&(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
@@ -582,7 +582,7 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   };
 
-  uint64_t hash = XXH64(name_bin.data, name_bin.size, HASH_SEED) ;
+  uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
   metric = find_metric(cache, hash, name_bin.size, name_bin.data);
   return  enif_make_tuple2(env,
                            enif_make_atom(env, "ok"),
