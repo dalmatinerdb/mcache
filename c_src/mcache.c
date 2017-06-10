@@ -514,7 +514,7 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   add_point(cache->conf, &(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
 
   cache->inserts++;
-  if (cache->inserts > AGE_CYCLE) {
+  if (cache->inserts > cache->conf.age_cycle) {
     age(cache);
     cache->age++;
     cache->inserts = 0;
