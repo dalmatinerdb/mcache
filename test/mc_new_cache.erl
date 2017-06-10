@@ -3,7 +3,7 @@
 -export([do_put/4, init/1]).
 
 init(TotalSize) ->
-    {ok, C} = mcache:new(TotalSize),
+    {ok, C} = mcache:new(TotalSize, []),
     C.
 
 do_put(BM, Time, Data, C) ->
