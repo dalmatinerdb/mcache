@@ -61,8 +61,8 @@ new(MaxAlloc, Opts) ->
     InitialDataSize = proplists:get_value(initial_data_size, Opts, 32),
     InitialEntries = proplists:get_value(initial_entries, Opts, 4),
     HashSeed = proplists:get_value(hash_seed, Opts, 42),
-      new(MaxAlloc, Buckets, AgeCycle, InitialDataSize, InitialEntries,
-          HashSeed).
+    new(MaxAlloc, Buckets, AgeCycle, InitialDataSize, InitialEntries,
+        HashSeed).
 -spec pop(mcache_handle()) ->
                  undefined |
                  {ok, key(), chunks()}.
@@ -71,8 +71,8 @@ pop(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
 -spec insert(mcache_handle(), key(), offset(), values()) ->
-                 undefined |
-                 {overflow, key(), chunks()}.
+                    ok |
+                    {overflow, key(), chunks()}.
 insert(_Handle, _Name, _Offset, _Value) ->
     erlang:nif_error(nif_library_not_loaded).
 
@@ -84,15 +84,15 @@ get(_Handle, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
 
 -spec remove_prefix(mcache_handle(), key()) ->
-                 undefined |
-                 {ok, non_neg_integer()}.
+                           undefined |
+                           {ok, non_neg_integer()}.
 
 remove_prefix(_Handle, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
 
 -spec take(mcache_handle(), key()) ->
-                 undefined |
-                 {ok, chunks()}.
+                  undefined |
+                  {ok, chunks()}.
 
 take(_Handle, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
@@ -104,7 +104,7 @@ stats(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
 -spec is_empty(mcache_handle()) ->
-                   boolean().
+                      boolean().
 is_empty(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
