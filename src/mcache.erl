@@ -78,7 +78,7 @@ insert(_Handle, _Name, _Offset, _Value) ->
 
 -spec get(mcache_handle(), key()) ->
                  undefined |
-                 {ok, key(), chunks()}.
+                 {ok, chunks()}.
 
 get(_Handle, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
@@ -92,7 +92,7 @@ remove_prefix(_Handle, _Name) ->
 
 -spec take(mcache_handle(), key()) ->
                  undefined |
-                 {ok, key(), chunks()}.
+                 {ok, chunks()}.
 
 take(_Handle, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
