@@ -72,15 +72,18 @@ void age(mcache_t *cache) {
       };*/
     cache->g2.buckets[i].count += cache->g1.buckets[i].count;
     cache->g2.buckets[i].size = cache->g2.buckets[i].count;
-    // G0 -> G1
-    cache->g1.buckets[i].size = cache->g0.buckets[i].size;
-    cache->g1.buckets[i].count = cache->g0.buckets[i].count;
-    cache->g1.buckets[i].metrics = cache->g0.buckets[i].metrics;
+    // Free the G1 metric  list of this bucket as we copied it all out
+    enif_free(cache->g1.buckets[i].metrics);
   }
+  // free g1 buckets (we copied the content to g2)
+  enif_free(cache->g1.buckets);
+  // move g0 buckets to g1
+  cache->g1.buckets = cache->g0.buckets;
 
   cache->g2.alloc += cache->g1.alloc;
   cache->g1.alloc = cache->g0.alloc;
   cache->g0.alloc = 0;
+  // reinitialize g0
   init_buckets(cache->conf, &(cache->g0));
 
 }
