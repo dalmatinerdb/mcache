@@ -10,8 +10,8 @@ add_t(T, N, O, V) ->
       N, fun(Acc) -> maps:put(O, V, Acc) end,
       maps:from_list([{O, V}]), T).
 
-new(Size) ->
-    {ok, H} = mcache:new(Size, []),
+new(Size, Opts) ->
+    {ok, H} = mcache:new(Size, Opts),
     {H, #{}, []}.
 
 insert({H, T, Ds}, N, O, V) ->
@@ -51,8 +51,8 @@ get({H, T, Ds}, N) ->
 val() ->
     ?LET(N, nat(),  <<N:64>>).
 
-cache(MaxSize) ->
-    ?SIZED(Size, cache(MaxSize, Size)).
+cache(MaxSize, Opts) ->
+    ?SIZED(Size, cache(MaxSize, Opts, Size)).
 
 
 key() ->
@@ -61,13 +61,25 @@ key() ->
 v_time() ->
     nat().
 
-cache(MaxSize, 0) ->
-    {call, ?MODULE, new, [MaxSize]};
+pnat() ->
+    ?SUCHTHAT(N, nat(), N > 0).
 
-cache(MaxSize, Size) ->
+opts() ->
+    [
+     {buckets, pnat()},
+     {age_cycle, pnat()},
+     {initial_data_size, pnat()},
+     {initial_entries, pnat()},
+     {hash_seed, pnat()}
+    ].
+
+cache(MaxSize, Opts, 0) ->
+    {call, ?MODULE, new, [MaxSize, Opts]};
+
+cache(MaxSize, Opts, Size) ->
     ?LAZY(
        ?LETSHRINK(
-          [H], [cache(MaxSize, Size -1)],
+          [H], [cache(MaxSize, Opts, Size -1)],
           frequency(
             [
              {1,   {call, ?MODULE, age, [H]}},
@@ -82,8 +94,8 @@ c_size() ->
 
 prop_limit_ok() ->
     ?FORALL(
-       MaxSize, c_size(),
-       ?FORALL(Cache, cache(MaxSize),
+       {MaxSize, Opts}, {c_size(), opts()},
+       ?FORALL(Cache, cache(MaxSize, Opts),
                begin
                    %% io:format("~p~n", [Cache]),
                    {H, _, _} = eval(Cache),
@@ -155,8 +167,8 @@ check_elements([H | _T]) ->
 
 prop_map_comp() ->
     ?FORALL(
-       MaxSize, c_size(),
-       ?FORALL(Cache, cache(MaxSize),
+       {MaxSize, Opts}, {c_size(), opts()},
+       ?FORALL(Cache, cache(MaxSize, Opts),
                begin
                    {H, T, Ds} = eval(Cache),
                    TreeKs = all_keys_t(T),
