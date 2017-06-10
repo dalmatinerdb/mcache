@@ -36,7 +36,8 @@ void print_metric(mc_metric_t *metric) {
 
 int init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
   int i;
-  for (i = 0; i < BUCKETS; i++) {
+  //gen->buckets = (mc_bucket_t *) enif_alloc(conf.buckets * sizeof(mc_bucket_t *));
+  for (i = 0; i < conf.buckets; i++) {
     gen->buckets[i].size = conf.initial_entries;
     gen->buckets[i].count = 0;
     gen->buckets[i].metrics = (mc_metric_t **) enif_alloc(conf.initial_entries * sizeof(mc_metric_t *));
@@ -49,7 +50,7 @@ int init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
 
 void age(mcache_t *cache) {
   int i;
-  for (i = 0; i < BUCKETS; i++) {
+  for (i = 0; i < cache->conf.buckets; i++) {
     // G1 -> G2
 
     mc_metric_t **new_metrics = (mc_metric_t **) enif_alloc((cache->g2.buckets[i].count + cache->g1.buckets[i].count) * sizeof(mc_metric_t *));
@@ -110,9 +111,9 @@ static ERL_NIF_TERM serialize_metric(ErlNifEnv* env, mc_metric_t *metric) {
   return reverse;
 }
 
-static void enif_free_entry(mc_entry_t *e) {
+static void free_entry(mc_entry_t *e) {
   if (e->next) {
-    enif_free_entry(e->next);
+    free_entry(e->next);
   }
   enif_free(e->data);
   enif_free(e);
@@ -121,26 +122,27 @@ static void enif_free_entry(mc_entry_t *e) {
 
 static void free_metric(mc_metric_t *m) {
   if (m->head) {
-    enif_free_entry(m->head);
+    free_entry(m->head);
   }
   enif_free(m->name);
   enif_free(m);
 }
 
-static void enif_free_gen(mc_gen_t gen) {
-  for (int i = 0; i < BUCKETS; i++) {
+static void free_gen(mc_conf_t conf, mc_gen_t gen) {
+  for (int i = 0; i < conf.buckets; i++) {
     for (int j = 0; j < gen.buckets[i].count; j++) {
       free_metric(gen.buckets[i].metrics[j]);
     };
     enif_free(gen.buckets[i].metrics);
   }
+  //enif_free(gen.buckets);
 };
 
 static void cache_dtor(ErlNifEnv* env, void* handle) {
   mcache_t * c = (mcache_t*) handle;
-  enif_free_gen(c->g0);
-  enif_free_gen(c->g1);
-  enif_free_gen(c->g2);
+  free_gen(c->conf, c->g0);
+  free_gen(c->conf, c->g1);
+  free_gen(c->conf, c->g2);
 };
 
 
@@ -197,6 +199,7 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
   cache->conf.max_alloc = max_alloc;
   cache->conf.buckets = buckets;
+  cache->conf.buckets = 128; // TODO: remove just for test
   cache->conf.age_cycle = age_cycle;
 
   cache->conf.initial_data_size = initial_data_size;
@@ -222,10 +225,10 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 };
 
 
-mc_metric_t *find_metric_g(mc_gen_t gen, uint64_t hash, uint16_t name_len, uint8_t *name) {
+mc_metric_t *find_metric_g(mc_conf_t conf, mc_gen_t gen, uint64_t hash, uint16_t name_len, uint8_t *name) {
   // Itterate over the existig metrics and see if we have already
   // seen this one.
-  uint64_t bucket = hash % BUCKETS;
+  uint64_t bucket = hash % conf.buckets;
   for (int i = 0; i < gen.buckets[bucket].count; i++) {
     mc_metric_t *m = gen.buckets[bucket].metrics[i];
     if (m->name_len == name_len
@@ -238,20 +241,20 @@ mc_metric_t *find_metric_g(mc_gen_t gen, uint64_t hash, uint16_t name_len, uint8
 };
 
 mc_metric_t *find_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
-  mc_metric_t *res = find_metric_g(cache->g0, hash, name_len, name);
+  mc_metric_t *res = find_metric_g(cache->conf, cache->g0, hash, name_len, name);
   if(!res) {
-    res = find_metric_g(cache->g1, hash, name_len, name);
+    res = find_metric_g(cache->conf, cache->g1, hash, name_len, name);
     if(!res) {
-      res = find_metric_g(cache->g2, hash, name_len, name);
+      res = find_metric_g(cache->conf, cache->g2, hash, name_len, name);
     }
   }
   return res;
 }
 
 
-mc_metric_t *find_metric_and_remove_g(mc_gen_t *gen, uint64_t hash, uint16_t name_len, uint8_t *name) {
+mc_metric_t *find_metric_and_remove_g(mc_conf_t conf, mc_gen_t *gen, uint64_t hash, uint16_t name_len, uint8_t *name) {
   int i = 0;
-  uint64_t bucket = hash % BUCKETS;
+  uint64_t bucket = hash % conf.buckets;
   // Itterate over the existig metrics and see if we have already
   // seen this one.
 
@@ -272,11 +275,11 @@ mc_metric_t *find_metric_and_remove_g(mc_gen_t *gen, uint64_t hash, uint16_t nam
 };
 
 mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
-  mc_metric_t *res = find_metric_and_remove_g(&(cache->g0), hash, name_len, name);
+  mc_metric_t *res = find_metric_and_remove_g(cache->conf, &(cache->g0), hash, name_len, name);
   if(!res) {
-    res = find_metric_and_remove_g(&(cache->g1), hash, name_len, name);
+    res = find_metric_and_remove_g(cache->conf, &(cache->g1), hash, name_len, name);
     if(!res) {
-      res = find_metric_and_remove_g(&(cache->g2), hash, name_len, name);
+      res = find_metric_and_remove_g(cache->conf, &(cache->g2), hash, name_len, name);
     };
   };
   return res;
@@ -285,10 +288,10 @@ mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t hash, uint16_t nam
 
 mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
 
-  uint64_t bucket = hash % BUCKETS;
+  uint64_t bucket = hash % cache->conf.buckets;
   // Itterate over the existig metrics and see if we have already
   // seen this one.
-  mc_metric_t *metric = find_metric_g(cache->g0, hash, name_len, name);
+  mc_metric_t *metric = find_metric_g(cache->conf, cache->g0, hash, name_len, name);
   if (metric) {
     return metric;
   }
@@ -304,9 +307,9 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
     b->size = b->size * 2;
   }
   // we havn't seen the metric so we'll create a new one.
-  metric = find_metric_and_remove_g(&(cache->g1), hash, name_len, name);
+  metric = find_metric_and_remove_g(cache->conf, &(cache->g1), hash, name_len, name);
   if (!metric) {
-    metric = find_metric_and_remove_g(&(cache->g2), hash, name_len, name);
+    metric = find_metric_and_remove_g(cache->conf, &(cache->g2), hash, name_len, name);
   }
   if (!metric) {
     metric = (mc_metric_t *) enif_alloc(sizeof(mc_metric_t));
@@ -449,10 +452,10 @@ check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket
   // and reduce the count and reduce the alloc;
 
   //TODO: This is not good!
-  for (int i = 0; i < BUCKETS; i++) {
+  for (int i = 0; i < cache->conf.buckets; i++) {
     // We itterate through all buckets starting after the bucket we just edited
     // that way we avoid always changing the same buket over and over
-    int b = (i + bucket + 1) % BUCKETS;
+    int b = (i + bucket + 1) % cache->conf.buckets;
     if (gen->buckets[b].count > 0) {
       // If we found a non empty bucket we find the largest metric in there to
       // evict, that way we can can free up the 'most sensible' thing;
@@ -509,7 +512,7 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   }
   uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
-  bucket = hash % BUCKETS;
+  bucket = hash % cache->conf.buckets;
   metric = get_metric(cache, hash, name_bin.size, name_bin.data);
   add_point(cache->conf, &(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
 
@@ -588,15 +591,15 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
                            serialize_metric(env, metric));
 };
 
-void print_gen(mc_gen_t gen) {
+void print_gen(mc_conf_t conf, mc_gen_t gen) {
   int size = 0;
   int count = 0;
-  for (int i = 0; i < BUCKETS; i++) {
+  for (int i = 0; i < conf.buckets; i++) {
     size += gen.buckets[i].size;
     count += gen.buckets[i].count;
   };
   printf("Cache: [c: %d |s: %d|a: %zu]:\r\n",  count, size, gen.alloc);
-  for (int i = 0; i < BUCKETS; i++) {
+  for (int i = 0; i < conf.buckets; i++) {
     for(int j = 0; j < gen.buckets[i].count; j++) {
       print_metric(gen.buckets[i].metrics[j]);
     };
@@ -612,9 +615,9 @@ print_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
     return enif_make_badarg(env);
   };
-  print_gen(cache->g0);
-  print_gen(cache->g1);
-  print_gen(cache->g2);
+  print_gen(cache->conf, cache->g0);
+  print_gen(cache->conf, cache->g1);
+  print_gen(cache->conf, cache->g2);
   return  enif_make_atom(env, "ok");
 };
 static ERL_NIF_TERM
@@ -631,10 +634,10 @@ age_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 };
 
 static ERL_NIF_TERM
-gen_stats(ErlNifEnv* env, mc_gen_t gen) {
+gen_stats(ErlNifEnv* env, mc_conf_t conf, mc_gen_t gen) {
   int size = 0;
   int count = 0;
-  for (int i = 0; i < BUCKETS; i++) {
+  for (int i = 0; i < conf.buckets; i++) {
     size += gen.buckets[i].size;
     count += gen.buckets[i].count;
   };
@@ -702,13 +705,13 @@ stats_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
                                                            cache->g2.alloc)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "gen0"),
-                                          gen_stats(env, cache->g0)),
+                                          gen_stats(env, cache->conf, cache->g0)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "gen1"),
-                                          gen_stats(env, cache->g1)),
+                                          gen_stats(env, cache->conf, cache->g1)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "gen2"),
-                                          gen_stats(env, cache->g2)));
+                                          gen_stats(env, cache->conf, cache->g2)));
 };
 
 static ErlNifFunc nif_funcs[] = {
