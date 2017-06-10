@@ -4,8 +4,8 @@
 
 %% API exports
 -export([new/2, pop/1, insert/4, print/1, stats/1, get/2, age/1,
-         take/2
-        %%, is_empty/1, delete_prefix/2
+         take/2 , is_empty/1
+        %%, delete_prefix/2
         ]).
 
 -type mcache_handle() :: binary().
@@ -95,6 +95,11 @@ take(_Handle, _Name) ->
 -spec stats(mcache_handle()) ->
                    stats().
 stats(_Handle) ->
+    erlang:nif_error(nif_library_not_loaded).
+
+-spec is_empty(mcache_handle()) ->
+                   boolean().
+is_empty(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
 

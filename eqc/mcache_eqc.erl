@@ -170,6 +170,25 @@ prop_limit_ok() ->
                                       Max >= Total)
                         end))).
 
+prop_is_empty() ->
+    ?FORALL(
+       {MaxSize, Opts}, {c_size(), opts()},
+       ?FORALL(Cache, cache(MaxSize, Opts),
+               ?TIMEOUT(1000,
+                        begin
+                            %% io:format("~p~n", [Cache]),
+                            {H, _, _} = eval(Cache),
+                            empty(H),
+                            mcache:is_empty(H)
+                        end))).
+
+empty(C) ->
+    case mcache:pop(C) of
+        undefined ->
+            ok;
+        _ ->
+        empty(C)
+    end.
 
 prop_insert_pop() ->
     ?FORALL(

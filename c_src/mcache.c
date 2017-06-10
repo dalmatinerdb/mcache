@@ -761,8 +761,8 @@ conf_info(ErlNifEnv* env, mc_conf_t conf) {
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "max_alloc"),
                                           enif_make_uint64(env, conf.max_alloc)));
-
 }
+
 
 
 static ERL_NIF_TERM
@@ -801,11 +801,27 @@ stats_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
                                           enif_make_atom(env, "gen2"),
                                           gen_stats(env, cache->conf, cache->g2)));
 };
+static ERL_NIF_TERM
+is_empty_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  mcache_t *cache;
+  if (argc != 1) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
+    return enif_make_badarg(env);
+  };
+  if (cache->g0.alloc == 0 && cache->g1.alloc == 0 && cache->g2.alloc == 0) {
+    return enif_make_atom(env, "true");
+  } else {
+    return enif_make_atom(env, "false");
+  }
+};
 
 static ErlNifFunc nif_funcs[] = {
   {"new", 6, new_nif},
   {"print", 1, print_nif},
   {"stats", 1, stats_nif},
+  {"is_empty", 1, is_empty_nif},
   {"age", 1, age_nif},
   {"pop", 1, pop_nif},
   {"get", 2, get_nif},
