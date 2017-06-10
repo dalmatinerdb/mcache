@@ -11,7 +11,7 @@ add_t(T, N, O, V) ->
       maps:from_list([{O, V}]), T).
 
 new(Size) ->
-    {ok, H} = mcache:new(Size),
+    {ok, H} = mcache:new(Size, []),
     {H, #{}, []}.
 
 insert({H, T, Ds}, N, O, V) ->
@@ -100,7 +100,7 @@ prop_insert_pop() ->
        {S, K, T, V}, {c_size(), key(), v_time(), val()},
        begin
            In = {K, T, V},
-           {ok, H} = mcache:new(S),
+           {ok, H} = mcache:new(S, []),
            mcache:insert(H, K, T, V),
            R1 = mcache:pop(H),
            R2 = mcache:pop(H),

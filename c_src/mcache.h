@@ -1,3 +1,6 @@
+#ifndef MC_H_INCLUDED
+#define MC_H_INCLUDED
+
 #define INITIAL_DATA_SIZE 40
 #define INITIAL_ENTRIES 8
 #define BUCKETS 128
@@ -39,9 +42,20 @@ typedef struct {
 
 typedef struct {
   uint64_t max_alloc;
+  uint32_t buckets;
+  uint64_t age_cycle;
+  uint16_t initial_data_size;
+  uint16_t initial_entries;
+  uint64_t hash_seed;
+} mc_conf_t;
+
+typedef struct {
+  mc_conf_t conf;
   uint32_t inserts;
   uint32_t age;
   mc_gen_t g0;
   mc_gen_t g1;
   mc_gen_t g2;
 } mcache_t;
+
+#endif // MC_H_INCLUDED

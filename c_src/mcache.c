@@ -165,21 +165,47 @@ upgrade(ErlNifEnv* env, void** priv, void** old_priv, ERL_NIF_TERM load_info)
 
 static ERL_NIF_TERM
 new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-  mcache_t *cache;
-  ErlNifSInt64 max_alloc;
-  if (argc != 1) {
+
+    mcache_t *cache;
+  ErlNifUInt64 max_alloc;
+  ErlNifUInt64 buckets;
+  ErlNifUInt64 age_cycle;
+  ErlNifUInt64 initial_data_size;
+  ErlNifUInt64 initial_entries;
+  ErlNifUInt64 hash_seed;
+  if (argc != 6) {
     return enif_make_badarg(env);
   };
-  if (!enif_get_int64(env, argv[0], &max_alloc)) {
-    return enif_make_badarg(env);
-  };
-  if (max_alloc < 0) {
-    return enif_make_badarg(env);
-  };
+  if (!enif_get_uint64(env, argv[0], &max_alloc)) return enif_make_badarg(env);
+  if (max_alloc < 0) return enif_make_badarg(env);
+
+  if (!enif_get_uint64(env, argv[1], &buckets)) return enif_make_badarg(env);
+  if (buckets <= 0) return enif_make_badarg(env);
+
+  if (!enif_get_uint64(env, argv[2], &age_cycle)) return enif_make_badarg(env);
+  if (age_cycle <= 0) return enif_make_badarg(env);
+
+  if (!enif_get_uint64(env, argv[3], &initial_data_size)) return enif_make_badarg(env);
+  if (initial_data_size <= 0) return enif_make_badarg(env);
+
+  if (!enif_get_uint64(env, argv[4], &initial_entries)) return enif_make_badarg(env);
+  if (initial_entries <= 0) return enif_make_badarg(env);
+
+  if (!enif_get_uint64(env, argv[5], &hash_seed)) return enif_make_badarg(env);
+  if (hash_seed <= 0) return enif_make_badarg(env);
+
   cache = (mcache_t *) enif_alloc_resource(mcache_t_handle, sizeof(mcache_t));
+
+  cache->conf.max_alloc = max_alloc;
+  cache->conf.buckets = buckets;
+  cache->conf.age_cycle = age_cycle;
+
+  cache->conf.initial_data_size = initial_data_size;
+  cache->conf.initial_entries = initial_entries;
+  cache->conf.hash_seed = hash_seed;
+
   cache->inserts = 0;
   cache->age = 0;
-  cache->max_alloc = max_alloc;
   cache->g0.v = 0;
   cache->g0.alloc = 0;
   init_buckets(&(cache->g0));
@@ -395,9 +421,6 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
 mc_metric_t *
 check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket) {
   mc_metric_t *metric = NULL;
-  ERL_NIF_TERM data;
-  ERL_NIF_TERM name;
-  unsigned char *namep;
   if (max_alloc > cache->g0.alloc +
       cache->g1.alloc +
       cache->g2.alloc) {
@@ -498,7 +521,7 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     cache->inserts = 0;
   }
   // We now check for overflow note that metric is re-used here!
-  metric = check_limit(env, cache, cache->max_alloc, bucket);
+  metric = check_limit(env, cache, cache->conf.max_alloc, bucket);
   if (metric) {
     data = serialize_metric(env, metric);
     namep = enif_make_new_binary(env, metric->name_len, &name);
@@ -548,7 +571,6 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   mcache_t *cache;
   mc_metric_t *metric;
   ErlNifBinary name_bin;
-  uint64_t bucket;
   if (argc != 2) {
     return enif_make_badarg(env);
   };
@@ -650,7 +672,7 @@ stats_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
                                           enif_make_uint64(env, cache->inserts)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "max_alloc"),
-                                          enif_make_uint64(env, cache->max_alloc)),
+                                          enif_make_uint64(env, cache->conf.max_alloc)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "total_alloc"),
                                           enif_make_uint64(env,
@@ -669,7 +691,7 @@ stats_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 };
 
 static ErlNifFunc nif_funcs[] = {
-  {"new", 1, new_nif},
+  {"new", 6, new_nif},
   {"print", 1, print_nif},
   {"stats", 1, stats_nif},
   {"age", 1, age_nif},
