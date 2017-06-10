@@ -654,6 +654,28 @@ gen_stats(ErlNifEnv* env, mc_gen_t gen) {
 }
 
 static ERL_NIF_TERM
+conf_info(ErlNifEnv* env, mc_conf_t conf) {
+  return enif_make_list5(env,
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "buckets"),
+                                          enif_make_uint64(env, conf.buckets)),
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "age_cycle"),
+                                          enif_make_uint64(env, conf.age_cycle)),
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "initial_data_size"),
+                                          enif_make_uint64(env, conf.initial_data_size)),
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "initial_entries"),
+                                          enif_make_uint64(env, conf.initial_entries)),
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "max_alloc"),
+                                          enif_make_uint64(env, conf.max_alloc)));
+
+}
+
+
+static ERL_NIF_TERM
 stats_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   mcache_t *cache;
   if (argc != 1) {
@@ -671,8 +693,8 @@ stats_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
                                           enif_make_atom(env, "inserts"),
                                           enif_make_uint64(env, cache->inserts)),
                          enif_make_tuple2(env,
-                                          enif_make_atom(env, "max_alloc"),
-                                          enif_make_uint64(env, cache->conf.max_alloc)),
+                                          enif_make_atom(env, "conf"),
+                                          conf_info(env, cache->conf)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "total_alloc"),
                                           enif_make_uint64(env,
