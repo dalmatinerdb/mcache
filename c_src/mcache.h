@@ -3,7 +3,6 @@
 
 #define BUCKETS 128
 // age every 1.000.000 inserts
-#define AGE_CYCLE 1000000
 //FFS C!
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
