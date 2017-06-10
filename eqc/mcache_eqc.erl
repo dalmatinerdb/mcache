@@ -187,7 +187,7 @@ empty(C) ->
         undefined ->
             ok;
         _ ->
-        empty(C)
+            empty(C)
     end.
 
 prop_insert_pop() ->
@@ -206,6 +206,26 @@ prop_insert_pop() ->
                               R2 == undefined)
                 end)).
 
+prop_remove_prefix() ->
+    ?FORALL(
+       {MaxSize, Opts, Pfx}, {c_size(), opts(), key()},
+       ?FORALL(
+          Cache, cache(MaxSize, Opts),
+          ?TIMEOUT(1000,
+                   begin
+                       {H, T, Ds} = eval(Cache),
+                       mcache:remove_prefix(H, Pfx),
+                       TreeKs = all_keys_t(T),
+                       TreeKs1 = filter_pfx(TreeKs, Pfx, []),
+                       CacheKs = all_keys_c(H, []),
+                       Ds1 = check_elements(Ds),
+                       ?WHENFAIL(io:format(user, "Cache: ~p~nTree:~p / ~p~nDs: ~p~n",
+                                           [CacheKs, TreeKs, T, Ds1]),
+                                 CacheKs == TreeKs1 andalso
+                                 Ds1 == [])
+                   end))).
+
+
 prop_map_comp() ->
     ?FORALL(
        {MaxSize, Opts}, {c_size(), opts()},
@@ -222,3 +242,16 @@ prop_map_comp() ->
                                  CacheKs == TreeKs andalso
                                  Ds1 == [])
                    end))).
+
+
+filter_pfx([{K, V} | R], Pfx, Acc) ->
+    S = byte_size(Pfx),
+    case K of
+        <<Pfx:S/binary, _/binary>> ->
+            filter_pfx(R, Pfx, Acc);
+        _ ->
+            filter_pfx(R, Pfx, [{K, V} | Acc])
+    end;
+
+filter_pfx([], Pfx, Acc) ->
+    lists:reverse(Acc).

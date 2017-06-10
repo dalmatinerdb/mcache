@@ -280,6 +280,38 @@ mc_metric_t *find_metric_and_remove_g(mc_conf_t conf, mc_gen_t *gen, uint64_t ha
   return NULL;
 };
 
+uint64_t remove_prefix_g(mc_conf_t conf, mc_gen_t *gen, uint16_t pfx_len, uint8_t *pfx) {
+  int i = 0;
+  uint64_t counter = 0;
+  // Itterate over the existig metrics and see if we have already
+  // seen this one.
+  for (int bucket = 0; bucket < conf.buckets; bucket++) {
+    for (i = 0; i < gen->buckets[bucket].count; i++) {
+      mc_metric_t *m = gen->buckets[bucket].metrics[i];
+      if (m->name_len >= pfx_len
+          && memcmp(m->name, pfx, pfx_len) == 0) {
+        if (i != gen->buckets[bucket].count - 1) {
+          gen->buckets[bucket].metrics[i] = gen->buckets[bucket].metrics[gen->buckets[bucket].count - 1];
+          // we chear we move the last element in the current position and then go a step
+          // back so we re-do it
+          i--;
+        }
+        gen->buckets[bucket].count--;
+        gen->alloc -= m->alloc;
+        free_metric(m);
+        counter++;
+      }
+    }
+  }
+  return counter;
+};
+
+uint64_t remove_prefix(mcache_t *cache, uint16_t pfx_len, uint8_t *pfx) {
+  return remove_prefix_g(cache->conf, &(cache->g0), pfx_len, pfx) +
+    remove_prefix_g(cache->conf, &(cache->g1), pfx_len, pfx) +
+    remove_prefix_g(cache->conf, &(cache->g2), pfx_len, pfx);
+}
+
 mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
   mc_metric_t *res = find_metric_and_remove_g(cache->conf, &(cache->g0), hash, name_len, name);
   if(!res) {
@@ -679,6 +711,29 @@ take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   }
 };
 
+static ERL_NIF_TERM
+remove_prefix_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  mcache_t *cache;
+  mc_metric_t *metric;
+  ErlNifBinary pfx_bin;
+  if (argc != 2) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
+    return enif_make_badarg(env);
+  };
+
+  if (!enif_inspect_binary(env, argv[1], &pfx_bin)) {
+    return enif_make_badarg(env);
+  };
+
+  uint64_t count = remove_prefix(cache, pfx_bin.size, pfx_bin.data);
+  return  enif_make_tuple2(env,
+                           enif_make_atom(env, "ok"),
+                           enif_make_uint64(env, count));
+};
+
+
 void print_gen(mc_conf_t conf, mc_gen_t gen) {
   int size = 0;
   int count = 0;
@@ -824,6 +879,7 @@ static ErlNifFunc nif_funcs[] = {
   {"is_empty", 1, is_empty_nif},
   {"age", 1, age_nif},
   {"pop", 1, pop_nif},
+  {"remove_prefix", 2, remove_prefix_nif},
   {"get", 2, get_nif},
   {"take", 2, take_nif},
   {"insert", 4, insert_nif},
