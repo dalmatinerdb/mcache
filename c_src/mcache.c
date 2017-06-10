@@ -34,12 +34,12 @@ void print_metric(mc_metric_t *metric) {
   print_entry(metric->head);
 };
 
-int init_buckets(/*@out@*/ mc_gen_t *gen) {
+int init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
   int i;
   for (i = 0; i < BUCKETS; i++) {
-    gen->buckets[i].size = INITIAL_ENTRIES;
+    gen->buckets[i].size = conf.initial_entries;
     gen->buckets[i].count = 0;
-    gen->buckets[i].metrics = (mc_metric_t **) enif_alloc(INITIAL_ENTRIES * sizeof(mc_metric_t *));
+    gen->buckets[i].metrics = (mc_metric_t **) enif_alloc(conf.initial_entries * sizeof(mc_metric_t *));
     if (!gen->buckets[i].metrics) {
       return 0;
     }
@@ -80,7 +80,7 @@ void age(mcache_t *cache) {
   cache->g2.alloc += cache->g1.alloc;
   cache->g1.alloc = cache->g0.alloc;
   cache->g0.alloc = 0;
-  init_buckets(&(cache->g0));
+  init_buckets(cache->conf, &(cache->g0));
 
 }
 
@@ -208,13 +208,13 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   cache->age = 0;
   cache->g0.v = 0;
   cache->g0.alloc = 0;
-  init_buckets(&(cache->g0));
+  init_buckets(cache->conf, &(cache->g0));
   cache->g1.v = 1;
   cache->g1.alloc = 0;
-  init_buckets(&(cache->g1));
+  init_buckets(cache->conf, &(cache->g1));
   cache->g2.v = 2;
   cache->g2.alloc = 0;
-  init_buckets(&(cache->g2));
+  init_buckets(cache->conf, &(cache->g2));
   ERL_NIF_TERM term = enif_make_resource(env, cache);
   enif_release_resource(cache);
   return  enif_make_tuple2(env,

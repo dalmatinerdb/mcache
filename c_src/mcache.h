@@ -2,7 +2,6 @@
 #define MC_H_INCLUDED
 
 #define INITIAL_DATA_SIZE 40
-#define INITIAL_ENTRIES 8
 #define BUCKETS 128
 // age every 1.000.000 inserts
 #define AGE_CYCLE 1000000
