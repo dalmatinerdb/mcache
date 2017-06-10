@@ -340,7 +340,7 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
   // be empty and it's needed to set next to empty for the first element.
   mc_entry_t *entry = NULL;
   if((!metric->head) || metric->head->start > offset) {
-    size_t alloc = sizeof(ErlNifSInt64) * MAX(conf.initial_data_size, count);
+    size_t alloc = sizeof(ErlNifSInt64) * MAX(conf.initial_data_size, count * 2);
     entry = enif_alloc(sizeof(mc_entry_t));
     entry->start = offset;
     entry->size = conf.initial_data_size;
