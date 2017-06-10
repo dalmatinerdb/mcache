@@ -177,7 +177,6 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   };
   if (!enif_get_uint64(env, argv[0], &max_alloc)) return enif_make_badarg(env);
-  if (max_alloc < 0) return enif_make_badarg(env);
 
   if (!enif_get_uint64(env, argv[1], &buckets)) return enif_make_badarg(env);
   if (buckets <= 0) return enif_make_badarg(env);
@@ -324,7 +323,7 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
   return metric;
 };
 
-void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSInt64* value) {
+void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSInt64* value) {
   // If eitehr we have no data yet or the current data is larger then
   // the offset we generate a new metric.
   // In both cases next will be the current head given that next might
@@ -332,10 +331,10 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
   mc_entry_t *entry;
   ErlNifSInt64 v = value[0];
   if((!metric->head) || metric->head->start > offset) {
-    size_t alloc = sizeof(ErlNifSInt64) * INITIAL_DATA_SIZE;
+    size_t alloc = sizeof(ErlNifSInt64) * conf.initial_data_size;
     entry = enif_alloc(sizeof(mc_entry_t));
     entry->start = offset;
-    entry->size = INITIAL_DATA_SIZE;
+    entry->size = conf.initial_data_size;
     entry->data = (ErlNifSInt64 *) enif_alloc(alloc);
     entry->data[0] = v;
     entry->count = 1;
@@ -372,9 +371,9 @@ void add_point(mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSI
         (offset > entry->start + entry->count)
         ) {
       mc_entry_t *next = enif_alloc(sizeof(mc_entry_t));
-      uint64_t alloc = INITIAL_DATA_SIZE * sizeof(ErlNifSInt64);
+      uint64_t alloc = conf.initial_data_size * sizeof(ErlNifSInt64);
       next->start = offset;
-      next->size = INITIAL_DATA_SIZE;
+      next->size = conf.initial_data_size;
       next->data = (ErlNifSInt64 *) enif_alloc(alloc);
       next->count = 0;
       next->next = entry->next;
@@ -512,7 +511,7 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
   bucket = hash % BUCKETS;
   metric = get_metric(cache, hash, name_bin.size, name_bin.data);
-  add_point(&(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
+  add_point(cache->conf, &(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
 
   cache->inserts++;
   if (cache->inserts > AGE_CYCLE) {
