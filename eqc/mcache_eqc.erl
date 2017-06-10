@@ -7,8 +7,16 @@
 
 add_t(T, N, O, V) ->
     maps:update_with(
-      N, fun(Acc) -> maps:put(O, V, Acc) end,
-      maps:from_list([{O, V}]), T).
+      N, fun(Acc) ->
+                 set_points(O, V, Acc)
+         end,
+      set_points(O, V, #{}), T).
+
+
+set_points(_, <<>>, Acc) ->
+    Acc;
+set_points(O, <<V:8/binary, Vs/binary>>, Acc) ->
+    set_points(O + 1, Vs, maps:put(O, V, Acc)).
 
 new(Size, Opts) ->
     {ok, H} = mcache:new(Size, Opts),
@@ -49,7 +57,7 @@ get({H, T, Ds}, N) ->
     {H, T, Ds}.
 
 val() ->
-    ?LET(N, nat(),  <<N:64>>).
+    ?LET(Ns, ?SUCHTHAT(L, list(nat()), L /= []), << <<N:64>> || N <- Ns >>).
 
 cache(MaxSize, Opts) ->
     ?SIZED(Size, cache(MaxSize, Opts, Size)).
@@ -92,35 +100,6 @@ cache(MaxSize, Opts, Size) ->
 c_size() ->
     ?LET(I, largeint(), erlang:abs(I)).
 
-prop_limit_ok() ->
-    ?FORALL(
-       {MaxSize, Opts}, {c_size(), opts()},
-       ?FORALL(Cache, cache(MaxSize, Opts),
-               begin
-                   %% io:format("~p~n", [Cache]),
-                   {H, _, _} = eval(Cache),
-                   Stats = mcache:stats(H),
-                   Max = proplists:get_value(max_alloc, Stats),
-                   Total = proplists:get_value(total_alloc, Stats),
-                   ?WHENFAIL(io:format(user, "Max: ~p~nTotal:~p~n", [Max, Total]),
-                             Max >= Total)
-               end)).
-
-
-prop_insert_pop() ->
-    ?FORALL(
-       {S, K, T, V}, {c_size(), key(), v_time(), val()},
-       begin
-           In = {K, T, V},
-           {ok, H} = mcache:new(S, []),
-           mcache:insert(H, K, T, V),
-           R1 = mcache:pop(H),
-           R2 = mcache:pop(H),
-           ?WHENFAIL(io:format(user, "In: ~p~nR1: ~p~nR2: ~p~n",
-                               [In, R1, R2]),
-                     R1 == {ok,K ,[{T, V}]} andalso
-                     R2 == undefined)
-       end).
 
 
 all_keys_c(H, Acc) ->
@@ -165,17 +144,51 @@ check_elements([H | _T]) ->
     [H].
 
 
-prop_map_comp() ->
+prop_limit_ok() ->
     ?FORALL(
        {MaxSize, Opts}, {c_size(), opts()},
        ?FORALL(Cache, cache(MaxSize, Opts),
-               begin
-                   {H, T, Ds} = eval(Cache),
-                   TreeKs = all_keys_t(T),
-                   CacheKs = all_keys_c(H, []),
-                   Ds1 = check_elements(Ds),
-                   ?WHENFAIL(io:format(user, "Cache: ~p~nTree:~p / ~p~nDs: ~p~n",
-                                       [CacheKs, TreeKs, T, Ds1]),
-                             CacheKs == TreeKs andalso
-                             Ds1 == [])
-               end)).
+               ?TIMEOUT(1000,
+                        begin
+                            %% io:format("~p~n", [Cache]),
+                            {H, _, _} = eval(Cache),
+                            Stats = mcache:stats(H),
+                            Max = proplists:get_value(max_alloc, Stats),
+                            Total = proplists:get_value(total_alloc, Stats),
+                            ?WHENFAIL(io:format(user, "Max: ~p~nTotal:~p~n", [Max, Total]),
+                                      Max >= Total)
+                        end))).
+
+
+prop_insert_pop() ->
+    ?FORALL(
+       {S, K, T, V}, {c_size(), key(), v_time(), val()},
+       ?TIMEOUT(1000,
+                begin
+                    In = {K, T, V},
+                    {ok, H} = mcache:new(S, []),
+                    mcache:insert(H, K, T, V),
+                    R1 = mcache:pop(H),
+                    R2 = mcache:pop(H),
+                    ?WHENFAIL(io:format(user, "In: ~p~nR1: ~p~nR2: ~p~n",
+                                        [In, R1, R2]),
+                              R1 == {ok,K ,[{T, V}]} andalso
+                              R2 == undefined)
+                end)).
+
+prop_map_comp() ->
+    ?FORALL(
+       {MaxSize, Opts}, {c_size(), opts()},
+       ?FORALL(
+          Cache, cache(MaxSize, Opts),
+          ?TIMEOUT(1000,
+                   begin
+                       {H, T, Ds} = eval(Cache),
+                       TreeKs = all_keys_t(T),
+                       CacheKs = all_keys_c(H, []),
+                       Ds1 = check_elements(Ds),
+                       ?WHENFAIL(io:format(user, "Cache: ~p~nTree:~p / ~p~nDs: ~p~n",
+                                           [CacheKs, TreeKs, T, Ds1]),
+                                 CacheKs == TreeKs andalso
+                                 Ds1 == [])
+                   end))).

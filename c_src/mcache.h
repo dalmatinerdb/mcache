@@ -4,6 +4,7 @@
 // age every 1.000.000 inserts
 //FFS C!
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 typedef struct  mc_entry {
   ErlNifSInt64 start;

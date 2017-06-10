@@ -325,6 +325,7 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
     metric->name_len = name_len;
     memcpy(metric->name, name, name_len);
     metric->head = NULL;
+    metric->tail = NULL;
   }
   cache->g0.alloc += metric->alloc;
   b->metrics[b->count] = metric;
@@ -332,29 +333,26 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
   return metric;
 };
 
-void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, ErlNifSInt64* value) {
+void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 offset, size_t count, ErlNifSInt64* values) {
   // If eitehr we have no data yet or the current data is larger then
   // the offset we generate a new metric.
   // In both cases next will be the current head given that next might
   // be empty and it's needed to set next to empty for the first element.
-  mc_entry_t *entry;
-  ErlNifSInt64 v = value[0];
+  mc_entry_t *entry = NULL;
   if((!metric->head) || metric->head->start > offset) {
-    size_t alloc = sizeof(ErlNifSInt64) * conf.initial_data_size;
+    size_t alloc = sizeof(ErlNifSInt64) * MAX(conf.initial_data_size, count);
     entry = enif_alloc(sizeof(mc_entry_t));
     entry->start = offset;
     entry->size = conf.initial_data_size;
     entry->data = (ErlNifSInt64 *) enif_alloc(alloc);
-    entry->data[0] = v;
-    entry->count = 1;
+    entry->count = 0;
     entry->next = metric->head;
     metric->head = entry;
-    metric->alloc += alloc + sizeof(mc_entry_t);
-    gen->alloc += alloc + sizeof(mc_entry_t);
-    if (!entry->next) {
+    if (!metric->tail) {
       metric->tail = entry;
     }
-    return;
+    metric->alloc += alloc + sizeof(mc_entry_t);
+    gen->alloc += alloc + sizeof(mc_entry_t);
   }
   if (offset > metric->tail->start) {
     entry = metric->tail;
@@ -373,11 +371,11 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
     //the start of the next chunk
 
     // we allocate a new chunk behind this and continue with that.
+    size_t internal_offset = offset - entry->start;
+
     if (
-        /* // If we have an offset that would exceedthis chunks max sie */
-        /* (offset - entry->start > MAX_CHUNK) || */
         // or we'd have gaps
-        (offset > entry->start + entry->count)
+        (internal_offset > entry->count)
         ) {
       mc_entry_t *next = enif_alloc(sizeof(mc_entry_t));
       uint64_t alloc = conf.initial_data_size * sizeof(ErlNifSInt64);
@@ -388,40 +386,96 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
       next->next = entry->next;
       entry->next = next;
       entry = next;
+      if (!entry->next) {
+        metric->tail = entry;
+      }
       metric->alloc += alloc + sizeof(mc_entry_t);
       gen->alloc += alloc + sizeof(mc_entry_t);
 
       continue;
     }
 
-    if (entry->count >= entry->size) {
+    // if we would overlap with the next chunk we combine the two
+    if (entry->next &&
+        offset + count >= entry->next->start) {
+      // the new size is the delta between our start and the total end of the next chunk
+      mc_entry_t *next = entry->next;
+      uint64_t new_size = next->start + next->size - entry->start;
+      uint64_t new_count = next->start - entry->start + next->count;
+
+      /* printf("Asked to write %d -> %d\r\n", offset, offset + count); */
+      /* printf("combining %d->%d(%d) and %d->%d(%d)\r\n", */
+      /*        entry->start, entry->start + entry->count, entry->start + entry->size, */
+      /*        next->start, next->start + next->count, next->start + next->size); */
+      /* printf("new range %d->%d(%d)\r\n", entry->start, entry->start + new_count, entry->start + new_size); */
+      /* fflush(stdout); */
+
+      ErlNifSInt64 *new_data = (ErlNifSInt64 *) enif_alloc(new_size * sizeof(ErlNifSInt64));
+
+      // recalculate the allocation
+      metric->alloc -= (entry->size * sizeof(ErlNifSInt64));
+      gen->alloc -= (entry->size * sizeof(ErlNifSInt64));
+      metric->alloc -= (next->size * sizeof(ErlNifSInt64));
+      gen->alloc -= (next->size * sizeof(ErlNifSInt64));
+      metric->alloc += new_size;
+      gen->alloc += new_size;
+
+
+      entry->next = next->next;
+      // copy, free and reassign old data
+      memcpy(new_data, entry->data, entry->count* sizeof(ErlNifSInt64));
+      enif_free(entry->data);
+      entry->data = new_data;
+      // set new size and count
+      entry->size = new_size;
+      entry->count = new_count;
+
+      // now we calculate the delta of old and new start to get the offset in the
+      // new array to copy data to then free it
+      /* printf("2nd chunk offset: %d\r\n", next->start - entry->start); */
+      /* printf("copying points: %d\r\n", next->start - entry->start); */
+      /* fflush(stdout); */
+      memcpy(entry->data + next->start - entry->start, next->data, next->count* sizeof(ErlNifSInt64));
+      enif_free(next->data);
+      enif_free(next);
+      // if we don't have a next we are now the tail!
+      if (!entry->next) {
+        metric->tail = entry;
+      }
+      // we go back to the start of the loop in case we'd overlap multiple ones (oh my!)
+      continue;
+    };
+
+    // the offset in our data array
+
+    if (internal_offset + count >= entry->size) {
+      uint64_t new_size = entry->size * 2;
+      // keep growing untill we're sure we have the right size
+      while (internal_offset + count >= new_size) {
+        new_size *= 2;
+      }
 
       // prevent oddmath we just  removethe oldsizeand then add
       // the new size
       metric->alloc -= (entry->size * sizeof(ErlNifSInt64));
       gen->alloc -= (entry->size * sizeof(ErlNifSInt64));
 
-
-      uint64_t new_size = entry->size * 2;// MAX(entry->size * 2, MAX_CHUNK);
-      ErlNifSInt64 *new_data = (ErlNifSInt64 *) enif_alloc(new_size * sizeof(ErlNifSInt64)) ;
+      ErlNifSInt64 *new_data = (ErlNifSInt64 *) enif_alloc(new_size * sizeof(ErlNifSInt64));
       memcpy(new_data, entry->data, entry->size * sizeof(ErlNifSInt64));
       enif_free(entry->data);
       entry->data = new_data;
       entry->size = new_size;
-
       metric->alloc += (entry->size * sizeof(ErlNifSInt64));
       gen->alloc += (entry->size * sizeof(ErlNifSInt64));
     }
 
-    entry->data[offset - entry->start] = v;
-    if (offset - entry->start >= entry->count) {
-      entry->count++;
-    }
+    memcpy(entry->data + internal_offset, values, count * sizeof(ErlNifSInt64));
+
+    entry->count = MAX(offset - entry->start + count, entry->count);
 
     if (!entry->next) {
       metric->tail = entry;
     }
-
     return;
   } while (entry);
 }
@@ -520,7 +574,7 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
   bucket = hash % cache->conf.buckets;
   metric = get_metric(cache, hash, name_bin.size, name_bin.data);
-  add_point(cache->conf, &(cache->g0), metric, offset, (ErlNifSInt64 *) value.data);
+  add_point(cache->conf, &(cache->g0), metric, offset, value.size / 8, (ErlNifSInt64 *) value.data);
 
   cache->inserts++;
   if (cache->inserts > cache->conf.age_cycle) {
