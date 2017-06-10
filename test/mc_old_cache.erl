@@ -2,13 +2,16 @@
 
 -define(DATA_SIZE, 8).
 -record(state, {tbl, cache_size}).
--export([do_put/4, init/1, info/1]).
+-export([do_put/4, init/1, stop/1, info/1]).
 
 init(CacheSize) ->
     #state{
        tbl = ets:new(?MODULE, [public, ordered_set]),
        cache_size = CacheSize
       }.
+
+stop(#state{tbl = T}) ->
+    ets:delete(T).
 
 info(#state{tbl = T}) ->
     ets:info(T).
@@ -30,7 +33,6 @@ do_put(BM, Time, Value, #state{tbl = T, cache_size = CacheSize})
         %% written data.
         [{BM, _Start, _Size, _End, _V}]
           when Time < _Start ->
-            ddb_counter:inc(<<"ooo_write">>),
             [{write, byte_size(Value)}];
         %% When the Delta of start time and this package is greater
         %% then the cache time we flush the cache and start a new cache

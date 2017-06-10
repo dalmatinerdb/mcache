@@ -2,12 +2,12 @@
 
 -export([do_put/4, init/1]).
 
-init(TotalSize) ->
-    {ok, C} = mcache:new(TotalSize, []),
+init([TotalSize, Opts]) ->
+    {ok, C} = mcache:new(TotalSize, Opts),
     C.
 
 do_put(BM, Time, Data, C) ->
-    do_put(BM, Time, Data, C, []).
+    do_put(BM, Time, Data, C, [{buckets, 128}]).
 
 do_put(_BM, _Time, <<>>, _C, Acc) ->
     Acc;

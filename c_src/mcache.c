@@ -40,7 +40,7 @@ int init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
   for (i = 0; i < conf.buckets; i++) {
     gen->buckets[i].size = conf.initial_entries;
     gen->buckets[i].count = 0;
-    gen->buckets[i].metrics = (mc_metric_t **) enif_alloc(conf.initial_entries * sizeof(mc_metric_t *));
+    gen->buckets[i].metrics = (mc_metric_t **) enif_alloc(gen->buckets[i].size * sizeof(mc_metric_t *));
     if (!gen->buckets[i].metrics) {
       return 0;
     }
@@ -373,10 +373,8 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
     // we allocate a new chunk behind this and continue with that.
     size_t internal_offset = offset - entry->start;
 
-    if (
         // or we'd have gaps
-        (internal_offset > entry->count)
-        ) {
+    if (internal_offset > entry->count) {
       mc_entry_t *next = enif_alloc(sizeof(mc_entry_t));
       uint64_t alloc = conf.initial_data_size * sizeof(ErlNifSInt64);
       next->start = offset;
@@ -391,7 +389,6 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
       }
       metric->alloc += alloc + sizeof(mc_entry_t);
       gen->alloc += alloc + sizeof(mc_entry_t);
-
       continue;
     }
 
