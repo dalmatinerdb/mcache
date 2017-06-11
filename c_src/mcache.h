@@ -1,6 +1,8 @@
 #ifndef MC_H_INCLUDED
 #define MC_H_INCLUDED
 
+#include <stdint.h>
+
 // age every 1.000.000 inserts
 //FFS C!
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
