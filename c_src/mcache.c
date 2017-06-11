@@ -34,46 +34,43 @@ void print_metric(mc_metric_t *metric) {
   print_entry(metric->head);
 };
 
-int init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
+void init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
   int i;
   gen->buckets = (mc_bucket_t *) enif_alloc(conf.buckets * sizeof(mc_bucket_t));
   for (i = 0; i < conf.buckets; i++) {
-    gen->buckets[i].size = conf.initial_entries;
-    gen->buckets[i].count = 0;
-    gen->buckets[i].metrics = (mc_metric_t **) enif_alloc(gen->buckets[i].size * sizeof(mc_metric_t *));
-    if (!gen->buckets[i].metrics) {
-      return 0;
-    }
+    for (int j = 0; j < SUBS; j++) {
+      gen->buckets[i].subs[j].size = conf.initial_entries;
+      gen->buckets[i].subs[j].count = 0;
+      gen->buckets[i].subs[j].metrics = (mc_metric_t **) enif_alloc(gen->buckets[i].subs[j].size * sizeof(mc_metric_t *));
+    };
   }
-  return 1;
 }
 
 void age(mcache_t *cache) {
   int i;
   for (i = 0; i < cache->conf.buckets; i++) {
     // G1 -> G2
+    for (int j = 0; j < SUBS; j++) {
+      mc_sub_bucket_t *g2s = &(cache->g2.buckets[i].subs[j]);
+      mc_sub_bucket_t *g1s = &(cache->g1.buckets[i].subs[j]);
+      mc_metric_t **new_metrics = (mc_metric_t **) enif_alloc((g2s->count + g1s->count) * sizeof(mc_metric_t *));
+      memcpy(new_metrics, g2s->metrics, g2s->count * sizeof(mc_metric_t *));
+      enif_free(g2s->metrics);
+      g2s->metrics = new_metrics;
 
-    mc_metric_t **new_metrics = (mc_metric_t **) enif_alloc((cache->g2.buckets[i].count + cache->g1.buckets[i].count) * sizeof(mc_metric_t *));
-    memcpy(new_metrics, cache->g2.buckets[i].metrics, cache->g2.buckets[i].count * sizeof(mc_metric_t *));
-    enif_free(cache->g2.buckets[i].metrics);
-
-    cache->g2.buckets[i].metrics = new_metrics;
-
-    memcpy(
-           // copy to the end of the current array
-           &(cache->g2.buckets[i].metrics[cache->g2.buckets[i].count]),
-           // copy the start ofn the lower genj array
-           cache->g1.buckets[i].metrics,
-           // Copy based on the siuze of the old array
-           cache->g1.buckets[i].count * sizeof(mc_metric_t *)
-           );
-    /*for (int j = 0; j < cache->g1.buckets[i].count; j++) {
-      cache->g2.buckets[i].metrics[cache->g2.buckets[i].count + j] = cache->g1.buckets[i].metrics[j];
-      };*/
-    cache->g2.buckets[i].count += cache->g1.buckets[i].count;
-    cache->g2.buckets[i].size = cache->g2.buckets[i].count;
-    // Free the G1 metric  list of this bucket as we copied it all out
-    enif_free(cache->g1.buckets[i].metrics);
+      memcpy(
+             // copy to the end of the current array
+             &(g2s->metrics[g2s->count]),
+             // copy the start ofn the lower genj array
+             g1s->metrics,
+             // Copy based on the siuze of the old array
+             g1s->count * sizeof(mc_metric_t *)
+             );
+      g2s->count += g1s->count;
+      g2s->size = g2s->count;
+      // Free the G1 metric  list of this bucket as we copied it all out
+      enif_free(g1s->metrics);
+    }
   }
   // free g1 buckets (we copied the content to g2)
   enif_free(cache->g1.buckets);
@@ -133,10 +130,12 @@ static void free_metric(mc_metric_t *m) {
 
 static void free_gen(mc_conf_t conf, mc_gen_t gen) {
   for (int i = 0; i < conf.buckets; i++) {
-    for (int j = 0; j < gen.buckets[i].count; j++) {
-      free_metric(gen.buckets[i].metrics[j]);
-    };
-    enif_free(gen.buckets[i].metrics);
+    for (int j = 0; j < SUBS; j++) {
+      for (int k = 0; k < gen.buckets[i].subs[j].count; k++) {
+        free_metric(gen.buckets[i].subs[j].metrics[k]);
+      };
+      enif_free(gen.buckets[i].subs[j].metrics);
+    }
   }
   enif_free(gen.buckets);
 };
@@ -235,8 +234,9 @@ mc_metric_t *find_metric_g(mc_conf_t conf, mc_gen_t gen, uint64_t hash, uint16_t
   // Itterate over the existig metrics and see if we have already
   // seen this one.
   uint64_t bucket = hash % conf.buckets;
-  for (int i = 0; i < gen.buckets[bucket].count; i++) {
-    mc_metric_t *m = gen.buckets[bucket].metrics[i];
+  uint8_t sub = (hash >> 56) % SUBS;
+  for (int i = 0; i < gen.buckets[bucket].subs[sub].count; i++) {
+    mc_metric_t *m = gen.buckets[bucket].subs[sub].metrics[i];
     if (m->name_len == name_len
         && m->hash == hash
         && memcmp(m->name, name, name_len) == 0) {
@@ -261,18 +261,20 @@ mc_metric_t *find_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint
 mc_metric_t *find_metric_and_remove_g(mc_conf_t conf, mc_gen_t *gen, uint64_t hash, uint16_t name_len, uint8_t *name) {
   int i = 0;
   uint64_t bucket = hash % conf.buckets;
+  uint8_t sub = (hash >> 56) % SUBS;
+
   // Itterate over the existig metrics and see if we have already
   // seen this one.
 
-  for (i = 0; i < gen->buckets[bucket].count; i++) {
-    mc_metric_t *m = gen->buckets[bucket].metrics[i];
+  for (i = 0; i < gen->buckets[bucket].subs[sub].count; i++) {
+    mc_metric_t *m = gen->buckets[bucket].subs[sub].metrics[i];
     if (m->name_len == name_len
         && m->hash == hash
         && memcmp(m->name, name, name_len) == 0) {
-      if (i != gen->buckets[bucket].count - 1) {
-        gen->buckets[bucket].metrics[i] = gen->buckets[bucket].metrics[gen->buckets[bucket].count - 1];
+      if (i != gen->buckets[bucket].subs[sub].count - 1) {
+        gen->buckets[bucket].subs[sub].metrics[i] = gen->buckets[bucket].subs[sub].metrics[gen->buckets[bucket].subs[sub].count - 1];
       }
-      gen->buckets[bucket].count--;
+      gen->buckets[bucket].subs[sub].count--;
       gen->alloc -= m->alloc;
       return m;
     }
@@ -286,20 +288,22 @@ uint64_t remove_prefix_g(mc_conf_t conf, mc_gen_t *gen, uint16_t pfx_len, uint8_
   // Itterate over the existig metrics and see if we have already
   // seen this one.
   for (int bucket = 0; bucket < conf.buckets; bucket++) {
-    for (i = 0; i < gen->buckets[bucket].count; i++) {
-      mc_metric_t *m = gen->buckets[bucket].metrics[i];
-      if (m->name_len >= pfx_len
-          && memcmp(m->name, pfx, pfx_len) == 0) {
-        if (i != gen->buckets[bucket].count - 1) {
-          gen->buckets[bucket].metrics[i] = gen->buckets[bucket].metrics[gen->buckets[bucket].count - 1];
-          // we chear we move the last element in the current position and then go a step
-          // back so we re-do it
-          i--;
+    for (int sub = 0 ; sub < SUBS; sub++) {
+      for (i = 0; i < gen->buckets[bucket].subs[sub].count; i++) {
+        mc_metric_t *m = gen->buckets[bucket].subs[sub].metrics[i];
+        if (m->name_len >= pfx_len
+            && memcmp(m->name, pfx, pfx_len) == 0) {
+          if (i != gen->buckets[bucket].subs[sub].count - 1) {
+            gen->buckets[bucket].subs[sub].metrics[i] = gen->buckets[bucket].subs[sub].metrics[gen->buckets[bucket].subs[sub].count - 1];
+            // we chear we move the last element in the current position and then go a step
+            // back so we re-do it
+            i--;
+          }
+          gen->buckets[bucket].subs[sub].count--;
+          gen->alloc -= m->alloc;
+          free_metric(m);
+          counter++;
         }
-        gen->buckets[bucket].count--;
-        gen->alloc -= m->alloc;
-        free_metric(m);
-        counter++;
       }
     }
   }
@@ -327,13 +331,14 @@ mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t hash, uint16_t nam
 mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
 
   uint64_t bucket = hash % cache->conf.buckets;
+  uint8_t sub = (hash >> 56) % SUBS;
   // Itterate over the existig metrics and see if we have already
   // seen this one.
   mc_metric_t *metric = find_metric_g(cache->conf, cache->g0, hash, name_len, name);
   if (metric) {
     return metric;
   }
-  mc_bucket_t *b = &(cache->g0.buckets[bucket]);
+  mc_sub_bucket_t *b = &(cache->g0.buckets[bucket].subs[sub]);
   // We start with a small cache and grow it as required, so we need to
   // make sure the new index doesn't exceet the count. If it does
   // double the size of the cache.
@@ -405,7 +410,7 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
     // we allocate a new chunk behind this and continue with that.
     size_t internal_offset = offset - entry->start;
 
-        // or we'd have gaps
+    // or we'd have gaps
     if (internal_offset > entry->count) {
       mc_entry_t *next = enif_alloc(sizeof(mc_entry_t));
       uint64_t alloc = conf.initial_data_size * sizeof(ErlNifSInt64);
@@ -545,24 +550,26 @@ check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket
     // We itterate through all buckets starting after the bucket we just edited
     // that way we avoid always changing the same buket over and over
     int b = (i + bucket + 1) % cache->conf.buckets;
-    if (gen->buckets[b].count > 0) {
-      // If we found a non empty bucket we find the largest metric in there to
-      // evict, that way we can can free up the 'most sensible' thing;
-      int largest_idx = 0;
-      mc_bucket_t *bkt = &(gen->buckets[b]);
-      metric = bkt->metrics[0];
-      for (int j = 1; j < bkt->count; j++) {
-        if (bkt->metrics[j]->alloc >= metric->alloc) {
-          largest_idx = j;
-          metric = bkt->metrics[j];
+    for (int sub = 0; sub < SUBS; sub++) {
+      if (gen->buckets[b].subs[sub].count > 0) {
+        // If we found a non empty bucket we find the largest metric in there to
+        // evict, that way we can can free up the 'most sensible' thing;
+        int largest_idx = 0;
+        mc_sub_bucket_t *bkt = &(gen->buckets[b].subs[sub]);
+        metric = bkt->metrics[0];
+        for (int j = 1; j < bkt->count; j++) {
+          if (bkt->metrics[j]->alloc >= metric->alloc) {
+            largest_idx = j;
+            metric = bkt->metrics[j];
+          }
         }
+        if (largest_idx != bkt->count - 1) {
+          bkt->metrics[largest_idx] = bkt->metrics[bkt->count - 1];
+        }
+        bkt->count--;
+        gen->alloc -= metric->alloc;
+        return metric;
       }
-      if (largest_idx != bkt->count - 1) {
-        bkt->metrics[largest_idx] = bkt->metrics[gen->buckets[b].count - 1];
-      }
-      bkt->count--;
-      gen->alloc -= metric->alloc;
-      return metric;
     }
   }
   return NULL;
@@ -714,7 +721,6 @@ take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 static ERL_NIF_TERM
 remove_prefix_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   mcache_t *cache;
-  mc_metric_t *metric;
   ErlNifBinary pfx_bin;
   if (argc != 2) {
     return enif_make_badarg(env);
@@ -738,14 +744,18 @@ void print_gen(mc_conf_t conf, mc_gen_t gen) {
   int size = 0;
   int count = 0;
   for (int i = 0; i < conf.buckets; i++) {
-    size += gen.buckets[i].size;
-    count += gen.buckets[i].count;
+    for (int sub = 0; sub < SUBS; sub++) {
+      size += gen.buckets[i].subs[sub].size;
+      count += gen.buckets[i].subs[sub].count;
+    }
   };
   printf("Cache: [c: %d |s: %d|a: %zu]:\r\n",  count, size, gen.alloc);
   for (int i = 0; i < conf.buckets; i++) {
-    for(int j = 0; j < gen.buckets[i].count; j++) {
-      print_metric(gen.buckets[i].metrics[j]);
-    };
+    for (int sub = 0; sub < SUBS; sub++) {
+      for(int j = 0; j < gen.buckets[i].subs[sub].count; j++) {
+        print_metric(gen.buckets[i].subs[sub].metrics[j]);
+      }
+    }
   }
 }
 
@@ -781,8 +791,10 @@ gen_stats(ErlNifEnv* env, mc_conf_t conf, mc_gen_t gen) {
   int size = 0;
   int count = 0;
   for (int i = 0; i < conf.buckets; i++) {
-    size += gen.buckets[i].size;
-    count += gen.buckets[i].count;
+    for (int sub = 0; sub < SUBS; sub++) {
+      size += gen.buckets[i].subs[sub].size;
+      count += gen.buckets[i].subs[sub].count;
+    }
   };
 
   return enif_make_list3(env,

@@ -1,6 +1,6 @@
 #ifndef MC_H_INCLUDED
 #define MC_H_INCLUDED
-
+#define SUBS 64
 #include <stdint.h>
 /*
 ┌────────────┐
@@ -62,10 +62,15 @@ typedef struct {
   mc_entry_t *tail;
 } mc_metric_t;
 
+
 typedef struct {
   uint32_t size;
   uint32_t count;
   mc_metric_t **metrics;
+} mc_sub_bucket_t;
+
+typedef struct {
+  mc_sub_bucket_t subs[SUBS];
 } mc_bucket_t;
 
 typedef struct {
