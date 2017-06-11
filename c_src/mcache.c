@@ -6,6 +6,10 @@
 #include "xxhash.h"
 
 ErlNifResourceType* mcache_t_handle;
+static ERL_NIF_TERM atom_ok;
+static ERL_NIF_TERM atom_undefined;
+static ERL_NIF_TERM atom_overflow;
+
 
 void print_entry(mc_entry_t *entry) {
   uint8_t i;
@@ -101,7 +105,7 @@ static ERL_NIF_TERM serialize_entry(ErlNifEnv* env, mc_entry_t *entry) {
 
 static ERL_NIF_TERM serialize_metric(ErlNifEnv* env, mc_metric_t *metric) {
   if (! metric) {
-    return enif_make_atom(env, "undefined");
+    return atom_undefined;
   }
   ERL_NIF_TERM result = enif_make_list(env, 0);
   ERL_NIF_TERM reverse;
@@ -159,6 +163,9 @@ load(ErlNifEnv* env, void** priv, ERL_NIF_TERM load_info)
                                             &cache_dtor,
                                             flags,
                                             0);
+  atom_undefined = enif_make_atom(env, "undefined");
+  atom_ok = enif_make_atom(env, "ok");
+  atom_overflow = enif_make_atom(env, "overflow");
   return 0;
 }
 
@@ -226,7 +233,7 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   ERL_NIF_TERM term = enif_make_resource(env, cache);
   enif_release_resource(cache);
   return  enif_make_tuple2(env,
-                           enif_make_atom(env, "ok"),
+                           atom_ok,
                            term);
 };
 
@@ -619,11 +626,11 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     memcpy(namep, metric->name, metric->name_len);
     free_metric(metric);
     return  enif_make_tuple3(env,
-                             enif_make_atom(env, "overflow"),
+                             atom_overflow,
                              name,
                              data);
   }
-  return enif_make_atom(env, "ok");
+  return atom_ok;
 };
 
 static ERL_NIF_TERM
@@ -649,11 +656,11 @@ pop_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     memcpy(namep, metric->name, metric->name_len);
     free_metric(metric);
     return  enif_make_tuple3(env,
-                             enif_make_atom(env, "ok"),
+                             atom_ok,
                              name,
                              data);
   }
-  return enif_make_atom(env, "undefined");
+  return atom_undefined;
 
 };
 
@@ -677,10 +684,10 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   metric = find_metric(cache, hash, name_bin.size, name_bin.data);
   if (metric) {
     return  enif_make_tuple2(env,
-                             enif_make_atom(env, "ok"),
+                             atom_ok,
                              serialize_metric(env, metric));
   } else {
-    return enif_make_atom(env, "undefined");
+    return atom_undefined;
   }
 };
 
@@ -704,10 +711,10 @@ take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   metric = find_metric_and_remove(cache, hash, name_bin.size, name_bin.data);
   if (metric) {
     return  enif_make_tuple2(env,
-                             enif_make_atom(env, "ok"),
+                             atom_ok,
                              serialize_metric(env, metric));
   } else {
-    return enif_make_atom(env, "undefined");
+    return atom_undefined;
   }
 };
 
@@ -729,7 +736,7 @@ remove_prefix_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
   uint64_t count = remove_prefix(cache, pfx_bin.size, pfx_bin.data);
   return  enif_make_tuple2(env,
-                           enif_make_atom(env, "ok"),
+                           atom_ok,
                            enif_make_uint64(env, count));
 };
 
@@ -761,7 +768,7 @@ print_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   print_gen(cache->conf, cache->g0);
   print_gen(cache->conf, cache->g1);
   print_gen(cache->conf, cache->g2);
-  return  enif_make_atom(env, "ok");
+  return  atom_ok;
 };
 static ERL_NIF_TERM
 age_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
@@ -773,7 +780,7 @@ age_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   };
   age(cache);
-  return  enif_make_atom(env, "ok");
+  return  atom_ok;
 };
 
 static ERL_NIF_TERM
