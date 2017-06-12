@@ -74,13 +74,34 @@ new_run(MetricCount, PointsPerMetric, PointsPerWrite, Opts) ->
     io:format(user, "~nNew[~3b]: ~15b | ~15b | ~15b | ~15b | ~w",
               [PointsPerWrite, TN, WritesN, WrittenN, Mem, Opts]).
 
-bench_new_test_() ->
-    {timeout, 600,
+
+old_run(MetricCount, PointsPerMetric, PointsPerWrite) ->
+    Args = [MetricCount, PointsPerMetric div PointsPerWrite, PointsPerWrite],
+    {TO, {WritesO, WrittenO, Mem}} =
+        timer:tc(?MODULE, bench_old, Args),
+    io:format(user, "~nOld[~3b]: ~15b | ~15b | ~15b | ~15b",
+              [PointsPerWrite, TO, WritesO, WrittenO, Mem]).
+
+bench_01_old_test_() ->
+    {timeout, 60,
      fun () ->
              MetricCount = ?MCOUNT,
              PointsPerMetric = ?PPM,
              io:format(user, "~n     ~20s | ~15s | ~15s | ~15s | Opts",
                        ["Time", "Writes", "Written Bytes", "Memory"]),
+             old_run(MetricCount, PointsPerMetric, 1),
+             erlang:garbage_collect(),
+             old_run(MetricCount, PointsPerMetric, 10),
+             erlang:garbage_collect(),
+             old_run(MetricCount, PointsPerMetric, 100),
+             ?assert(true)
+     end}.
+
+bench_11_new_test_() ->
+    {timeout, 600,
+     fun () ->
+             MetricCount = ?MCOUNT,
+             PointsPerMetric = ?PPM,
              lists:foreach(fun (Bkts) ->
                                    Opts = [{buckets, Bkts}],
                                    new_run(MetricCount, PointsPerMetric, 1,
@@ -94,25 +115,6 @@ bench_new_test_() ->
                                    erlang:garbage_collect()
                            end, [32, 64, 128, 256, 512]),
 
-             ?assert(true)
-     end}.
-old_run(MetricCount, PointsPerMetric, PointsPerWrite) ->
-    Args = [MetricCount, PointsPerMetric div PointsPerWrite, PointsPerWrite],
-    {TO, {WritesO, WrittenO, Mem}} =
-        timer:tc(?MODULE, bench_old, Args),
-    io:format(user, "~nOld[~3b]: ~15b | ~15b | ~15b | ~15b",
-              [PointsPerWrite, TO, WritesO, WrittenO, Mem]).
-
-bench_old_test_() ->
-    {timeout, 60,
-     fun () ->
-             MetricCount = ?MCOUNT,
-             PointsPerMetric = ?PPM,
-             old_run(MetricCount, PointsPerMetric, 1),
-             erlang:garbage_collect(),
-             old_run(MetricCount, PointsPerMetric, 10),
-             erlang:garbage_collect(),
-             old_run(MetricCount, PointsPerMetric, 100),
              ?assert(true)
      end}.
 
