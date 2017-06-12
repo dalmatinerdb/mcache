@@ -629,30 +629,32 @@ check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket
   // and reduce the count and reduce the alloc;
 
   //TODO: This is not good!
+  mc_sub_bucket_t *largest_sub =  NULL;
+  metric = NULL;
+  int largest_idx = 0;
   for (int i = 0; i < cache->conf.buckets; i++) {
     // We itterate through all buckets starting after the bucket we just edited
     // that way we avoid always changing the same buket over and over
     int b = (i + bucket + 1) % cache->conf.buckets;
+    mc_bucket_t *bkt = &(gen->buckets[b]);
     for (int sub = 0; sub < SUBS; sub++) {
-      if (gen->buckets[b].subs[sub].count > 0) {
-        // If we found a non empty bucket we find the largest metric in there to
-        // evict, that way we can can free up the 'most sensible' thing;
-        int largest_idx = 0;
-        mc_sub_bucket_t *bkt = &(gen->buckets[b].subs[sub]);
-        metric = bkt->metrics[0];
-        for (int j = 1; j < bkt->count; j++) {
-          if (bkt->metrics[j]->alloc >= metric->alloc) {
-            largest_idx = j;
-            metric = bkt->metrics[j];
-          }
+      // If we found a non empty bucket we find the largest metric in there to
+      // evict, that way we can can free up the 'most sensible' thing;
+      for (int j = 0; j < bkt->subs[sub].count; j++) {
+        if (!metric || bkt->subs[sub].metrics[j]->alloc >= metric->alloc) {
+          largest_idx = j;
+          largest_sub = &(bkt->subs[sub]);
+          metric = largest_sub->metrics[j];
         }
-        if (largest_idx != bkt->count - 1) {
-          bkt->metrics[largest_idx] = bkt->metrics[bkt->count - 1];
-        }
-        bkt->count--;
-        gen->alloc -= metric->alloc;
-        return metric;
       }
+    }
+    if (metric) {
+      if (largest_idx != largest_sub->count - 1) {
+        largest_sub->metrics[largest_idx] = largest_sub->metrics[largest_sub->count - 1];
+      }
+      largest_sub->count--;
+      gen->alloc -= metric->alloc;
+      return metric;
     }
   }
   return NULL;
@@ -681,7 +683,7 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (!enif_inspect_binary(env, argv[1], &name_bin)) {
     return enif_make_badarg(env);
   };
-  if (!enif_get_int64(env, argv[2], &offset)) {
+  if (!enif_get_uint64(env, argv[2], &offset)) {
     return enif_make_badarg(env);
   };
   if (!enif_inspect_binary(env, argv[3], &value)) {
