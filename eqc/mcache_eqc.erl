@@ -5,6 +5,8 @@
 -compile(export_all).
 
 
+-define(TIMEOUT, 60000).
+
 add_t(T, N, O, V) ->
     maps:update_with(
       N, fun(Acc) ->
@@ -27,7 +29,6 @@ insert({H, T, Ds}, N, O, V) ->
         ok ->
             T1 = add_t(T, N, O, V),
             {H, T1, Ds};
-        %% TODO: record overflow!
         {overflow, K, Data} ->
             T1 = add_t(T, N, O, V),
             T2 = maps:remove(K, T1),
@@ -46,7 +47,6 @@ pop({H, T, Ds}) ->
     case mcache:pop(H) of
         undefined ->
             {H, T, Ds};
-        %% TODO: record removes!
         {ok, K , Data} ->
             T1 = maps:remove(K, T),
             {H, T1, [{shrink_t(Data), shrink_t(maps:get(K, T))} | Ds]}
@@ -56,7 +56,6 @@ take({H, T, Ds}, N) ->
     case mcache:take(H, N) of
         undefined ->
             {H, T, Ds};
-        %% TODO: record removes!
         {ok, Data} ->
             T1 = maps:remove(N, T),
             {H, T1, [{shrink_t(Data), shrink_t(maps:get(N, T))} | Ds]}
@@ -138,14 +137,14 @@ apply_t_size([{K, Data} | R], Acc) ->
 shrink_t(M) when is_map(M) ->
     shrink_t(lists:sort(maps:to_list(M)), []);
 shrink_t(L) when is_list(L)->
-    shrink_t(L, []).
+    shrink_t(lists:sort(L), []).
 
 shrink_t([{N, D}, {N1, D1} | R], Acc) when N1 == N + (byte_size(D) div 8) ->
     shrink_t([{N, <<D/binary, D1/binary>>} | R], Acc);
 shrink_t([E | R], Acc) ->
     shrink_t(R, [E | Acc]);
 shrink_t([], Acc) ->
-    lists:reverse(Acc).
+    lists:sort(Acc).
 
 check_elements([]) ->
     [];
@@ -159,7 +158,7 @@ prop_limit_ok() ->
     ?FORALL(
        {MaxSize, Opts}, {c_size(), opts()},
        ?FORALL(Cache, cache(MaxSize, Opts),
-               ?TIMEOUT(1000,
+               ?TIMEOUT(?TIMEOUT,
                         begin
                             %% io:format("~p~n", [Cache]),
                             {H, _, _} = eval(Cache),
@@ -174,7 +173,7 @@ prop_is_empty() ->
     ?FORALL(
        {MaxSize, Opts}, {c_size(), opts()},
        ?FORALL(Cache, cache(MaxSize, Opts),
-               ?TIMEOUT(1000,
+               ?TIMEOUT(?TIMEOUT,
                         begin
                             %% io:format("~p~n", [Cache]),
                             {H, _, _} = eval(Cache),
@@ -193,7 +192,7 @@ empty(C) ->
 prop_insert_pop() ->
     ?FORALL(
        {S, K, T, V}, {c_size(), key(), v_time(), val()},
-       ?TIMEOUT(1000,
+       ?TIMEOUT(?TIMEOUT,
                 begin
                     In = {K, T, V},
                     {ok, H} = mcache:new(S, []),
@@ -211,7 +210,7 @@ prop_remove_prefix() ->
        {MaxSize, Opts, Pfx}, {c_size(), opts(), key()},
        ?FORALL(
           Cache, cache(MaxSize, Opts),
-          ?TIMEOUT(1000,
+          ?TIMEOUT(?TIMEOUT,
                    begin
                        {H, T, Ds} = eval(Cache),
                        mcache:remove_prefix(H, Pfx),
@@ -231,7 +230,7 @@ prop_map_comp() ->
        {MaxSize, Opts}, {c_size(), opts()},
        ?FORALL(
           Cache, cache(MaxSize, Opts),
-          ?TIMEOUT(1000,
+          ?TIMEOUT(?TIMEOUT,
                    begin
                        {H, T, Ds} = eval(Cache),
                        TreeKs = all_keys_t(T),
