@@ -40,12 +40,12 @@ void print_metric(mc_metric_t *metric) {
 
 void init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
   int i;
-  gen->buckets = (mc_bucket_t *) enif_alloc(conf.buckets * sizeof(mc_bucket_t));
+  gen->buckets = (mc_bucket_t *) mc_alloc(conf.buckets * sizeof(mc_bucket_t));
   for (i = 0; i < conf.buckets; i++) {
     for (int j = 0; j < SUBS; j++) {
       gen->buckets[i].subs[j].size = conf.initial_entries;
       gen->buckets[i].subs[j].count = 0;
-      gen->buckets[i].subs[j].metrics = (mc_metric_t **) enif_alloc(gen->buckets[i].subs[j].size * sizeof(mc_metric_t *));
+      gen->buckets[i].subs[j].metrics = (mc_metric_t **) mc_alloc(gen->buckets[i].subs[j].size * sizeof(mc_metric_t *));
     };
   }
 }
@@ -57,9 +57,9 @@ void age(mcache_t *cache) {
     for (int j = 0; j < SUBS; j++) {
       mc_sub_bucket_t *g2s = &(cache->g2.buckets[i].subs[j]);
       mc_sub_bucket_t *g1s = &(cache->g1.buckets[i].subs[j]);
-      mc_metric_t **new_metrics = (mc_metric_t **) enif_alloc((g2s->count + g1s->count) * sizeof(mc_metric_t *));
+      mc_metric_t **new_metrics = (mc_metric_t **) mc_alloc((g2s->count + g1s->count) * sizeof(mc_metric_t *));
       memcpy(new_metrics, g2s->metrics, g2s->count * sizeof(mc_metric_t *));
-      enif_free(g2s->metrics);
+      mc_free(g2s->metrics);
       g2s->metrics = new_metrics;
 
       memcpy(
@@ -73,11 +73,11 @@ void age(mcache_t *cache) {
       g2s->count += g1s->count;
       g2s->size = g2s->count;
       // Free the G1 metric  list of this bucket as we copied it all out
-      enif_free(g1s->metrics);
+      mc_free(g1s->metrics);
     }
   }
   // free g1 buckets (we copied the content to g2)
-  enif_free(cache->g1.buckets);
+  mc_free(cache->g1.buckets);
   // move g0 buckets to g1
   cache->g1.buckets = cache->g0.buckets;
 
@@ -119,8 +119,8 @@ static void free_entry(mc_entry_t *e) {
   if (e->next) {
     free_entry(e->next);
   }
-  enif_free(e->data);
-  enif_free(e);
+  mc_free(e->data);
+  mc_free(e);
 }
 
 
@@ -128,8 +128,8 @@ static void free_metric(mc_metric_t *m) {
   if (m->head) {
     free_entry(m->head);
   }
-  enif_free(m->name);
-  enif_free(m);
+  mc_free(m->name);
+  mc_free(m);
 }
 
 static void free_gen(mc_conf_t conf, mc_gen_t gen) {
@@ -138,10 +138,10 @@ static void free_gen(mc_conf_t conf, mc_gen_t gen) {
       for (int k = 0; k < gen.buckets[i].subs[j].count; k++) {
         free_metric(gen.buckets[i].subs[j].metrics[k]);
       };
-      enif_free(gen.buckets[i].subs[j].metrics);
+      mc_free(gen.buckets[i].subs[j].metrics);
     }
   }
-  enif_free(gen.buckets);
+  mc_free(gen.buckets);
 };
 
 static void cache_dtor(ErlNifEnv* env, void* handle) {
@@ -350,9 +350,9 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
   // make sure the new index doesn't exceet the count. If it does
   // double the size of the cache.
   if (b->count >= b->size) {
-    mc_metric_t **new_metrics = enif_alloc(b->size * 2 * sizeof(mc_metric_t *));
+    mc_metric_t **new_metrics = mc_alloc(b->size * 2 * sizeof(mc_metric_t *));
     memcpy(new_metrics, b->metrics, b->size * sizeof(mc_metric_t *));
-    enif_free(b->metrics);
+    mc_free(b->metrics);
     b->metrics = new_metrics;
     b->size = b->size * 2;
   }
@@ -362,9 +362,9 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
     metric = find_metric_and_remove_g(cache->conf, &(cache->g2), hash, name_len, name);
   }
   if (!metric) {
-    metric = (mc_metric_t *) enif_alloc(sizeof(mc_metric_t));
+    metric = (mc_metric_t *) mc_alloc(sizeof(mc_metric_t));
     metric->alloc = name_len + sizeof(mc_metric_t);
-    metric->name = enif_alloc(name_len * sizeof(uint8_t));
+    metric->name = mc_alloc(name_len * sizeof(uint8_t));
     metric->hash = hash;
     metric->name_len = name_len;
     memcpy(metric->name, name, name_len);
@@ -385,10 +385,10 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
   mc_entry_t *entry = NULL;
   if((!metric->head) || metric->head->start > offset) {
     size_t alloc = sizeof(ErlNifSInt64) * MAX(conf.initial_data_size, count * 2);
-    entry = enif_alloc(sizeof(mc_entry_t));
+    entry = mc_alloc(sizeof(mc_entry_t));
     entry->start = offset;
     entry->size = conf.initial_data_size;
-    entry->data = (ErlNifSInt64 *) enif_alloc(alloc);
+    entry->data = (ErlNifSInt64 *) mc_alloc(alloc);
     entry->count = 0;
     entry->next = metric->head;
     metric->head = entry;
@@ -419,11 +419,11 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
 
     // or we'd have gaps
     if (internal_offset > entry->count) {
-      mc_entry_t *next = enif_alloc(sizeof(mc_entry_t));
+      mc_entry_t *next = mc_alloc(sizeof(mc_entry_t));
       uint64_t alloc = conf.initial_data_size * sizeof(ErlNifSInt64);
       next->start = offset;
       next->size = conf.initial_data_size;
-      next->data = (ErlNifSInt64 *) enif_alloc(alloc);
+      next->data = (ErlNifSInt64 *) mc_alloc(alloc);
       next->count = 0;
       next->next = entry->next;
       entry->next = next;
@@ -451,7 +451,7 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
       /* printf("new range %d->%d(%d)\r\n", entry->start, entry->start + new_count, entry->start + new_size); */
       /* fflush(stdout); */
 
-      ErlNifSInt64 *new_data = (ErlNifSInt64 *) enif_alloc(new_size * sizeof(ErlNifSInt64));
+      ErlNifSInt64 *new_data = (ErlNifSInt64 *) mc_alloc(new_size * sizeof(ErlNifSInt64));
 
       // recalculate the allocation
       metric->alloc -= (entry->size * sizeof(ErlNifSInt64));
@@ -465,7 +465,7 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
       entry->next = next->next;
       // copy, free and reassign old data
       memcpy(new_data, entry->data, entry->count* sizeof(ErlNifSInt64));
-      enif_free(entry->data);
+      mc_free(entry->data);
       entry->data = new_data;
       // set new size and count
       entry->size = new_size;
@@ -477,8 +477,8 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
       /* printf("copying points: %d\r\n", next->start - entry->start); */
       /* fflush(stdout); */
       memcpy(entry->data + next->start - entry->start, next->data, next->count* sizeof(ErlNifSInt64));
-      enif_free(next->data);
-      enif_free(next);
+      mc_free(next->data);
+      mc_free(next);
       // if we don't have a next we are now the tail!
       if (!entry->next) {
         metric->tail = entry;
@@ -501,9 +501,9 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifSInt64 
       metric->alloc -= (entry->size * sizeof(ErlNifSInt64));
       gen->alloc -= (entry->size * sizeof(ErlNifSInt64));
 
-      ErlNifSInt64 *new_data = (ErlNifSInt64 *) enif_alloc(new_size * sizeof(ErlNifSInt64));
+      ErlNifSInt64 *new_data = (ErlNifSInt64 *) mc_alloc(new_size * sizeof(ErlNifSInt64));
       memcpy(new_data, entry->data, entry->size * sizeof(ErlNifSInt64));
-      enif_free(entry->data);
+      mc_free(entry->data);
       entry->data = new_data;
       entry->size = new_size;
       metric->alloc += (entry->size * sizeof(ErlNifSInt64));

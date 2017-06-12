@@ -45,6 +45,10 @@
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
+
+// defining alloc and free functions so we can easiely switch between them
+#define mc_alloc(size) malloc(size)
+#define mc_free(ptr) free(ptr)
 typedef struct  mc_entry {
   ErlNifSInt64 start;
   uint32_t count;
