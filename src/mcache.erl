@@ -7,6 +7,24 @@
          take/2 , is_empty/1, remove_prefix/2
         ]).
 
+-export([crash/0]).
+
+crash() ->
+    H = mcache:new(4139,
+                   [{buckets,1},
+                    {age_cycle,1},
+                    {initial_data_size,24},
+                    {initial_entries,1},
+                    {hash_seed,1}]),
+    mcache:print(H),
+    ok = mcache:insert(H, <<>>,17, <<0,0,0,0,0,0,0,0>>),
+    mcache:print(H),
+    ok = mcache:insert(H, <<>>,23, <<0,0,0,0,0,0,0,0>>),
+    mcache:print(H),
+    ok = mcache:insert(H, <<>>,16, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>),
+    H.
+
+
 -type mcache_handle() :: binary().
 -type key() :: binary().
 -type offset() :: non_neg_integer().
@@ -52,8 +70,8 @@
 %%====================================================================
 
 -spec new(pos_integer(), [mc_opt()]) ->
-                 {ok, Handle::mcache_handle()} |
-                 mcache_error().
+                 Handle::mcache_handle() |
+                         mcache_error().
 
 new(MaxAlloc, Opts) ->
     Buckets = proplists:get_value(buckets, Opts, 512),

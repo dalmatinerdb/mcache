@@ -1,6 +1,8 @@
 #ifndef MC_H_INCLUDED
 #define MC_H_INCLUDED
+
 #define SUBS 64
+#define LCOUNT 10
 #include <stdint.h>
 
 /*
@@ -57,6 +59,17 @@
 #define mc_alloc(size) malloc(size)
 #define mc_free(ptr) free(ptr)
 
+#define subid(x) (x >> 56) % SUBS
+
+//#define DEBUG
+
+#ifdef DEBUG
+#define DPRINT 1
+#else
+#define DPRINT 0
+#endif
+
+#define dprint(args ...) do {if(DPRINT){fprintf(stdout, args); fflush(stdout);}} while (0)
 
 // used for debugging memory leaks
 /*
@@ -112,6 +125,7 @@ typedef struct {
   uint32_t tag;
   #endif
   mc_sub_bucket_t subs[SUBS];
+  mc_metric_t *largest[LCOUNT];
 } mc_bucket_t;
 
 typedef struct {

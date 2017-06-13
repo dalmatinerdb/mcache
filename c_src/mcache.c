@@ -12,6 +12,7 @@ static ERL_NIF_TERM atom_overflow;
 
 
 void print_entry(mc_entry_t *entry) {
+  {};
   uint8_t i;
   if (!entry) {
     printf("\r\n");
@@ -34,14 +35,19 @@ void print_metric(mc_metric_t *metric) {
   printf("  ");
   for(i = 0; i < metric->name_len; i++)
     printf("%c", (int) metric->name[i]);
-  printf(":\r\n");
+  printf("[%llu]:\r\n", metric->alloc);
   print_entry(metric->head);
 };
 
 void init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
+  dprint("init_buckets\r\n");
   gen->buckets = (mc_bucket_t *) mc_alloc(conf.buckets * sizeof(mc_bucket_t));
   for (int b = 0; b < conf.buckets; b++) {
     mc_bucket_t *bkt = &(gen->buckets[b]);
+
+    for (int i = 0; i < LCOUNT; i++) {
+      bkt->largest[i] = NULL;
+    }
 
 #ifdef TAGGED
     bkt->tag = TAG_BKT;
@@ -62,7 +68,102 @@ void init_buckets(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
   }
 }
 
+void remove_largest(mc_bucket_t *bkt, mc_metric_t *metric) {
+  int i = 0;
+  dprint("[%p] remove largest: %llu\r\n",  bkt, metric->hash);
+#ifdef DEBUG
+  dprint("- >>");
+  for(i = 0; i < LCOUNT; i++){
+    if (! bkt->largest[i]) {
+      break;
+    };
+    dprint(" %llu(%zu)", bkt->largest[i]->hash, bkt->largest[i]->alloc);
+  };
+  dprint("\r\n");
+#endif
+  
+  i = 0;
+  // short circuite when we have a last element
+  if (bkt->largest[LCOUNT - 1]) {
+    // if we are the last lement we can set it to null and return
+    if (bkt->largest[LCOUNT - 1] == metric) {
+      bkt->largest[LCOUNT - 1] = NULL;
+      return;
+    }
+  }
+  //skip all the ones we don't have
+  while (i < LCOUNT && bkt->largest[i] != metric) {
+    // if we found a null we can end our search
+    if (!bkt->largest[i]) {
+      dprint("return %d\r\n", i);
+      return;
+    }
+    i++;
+  };
+  dprint("found %d\r\n", i);
+  uint8_t moved = 0;
+  while (i < LCOUNT - 1) {
+    dprint("%d <- %d\r\n", i, i + 1);
+    // found a null we don't need to go on.
+    if (!bkt->largest[i]) {
+      return;
+    }
+    moved = 1;
+    bkt->largest[i] = bkt->largest[i+1];
+    i++;
+  }
+  if (moved) {
+    dprint("%d <- NULL\r\n", LCOUNT - 1);
+    bkt->largest[LCOUNT - 1] = NULL;
+  }
+}
+
+void insert_largest(mc_bucket_t *bkt, mc_metric_t *metric) {
+  remove_largest(bkt, metric);
+  dprint("[%p] insert largest: %llu\r\n", bkt, metric->hash);
+#ifdef DEBUG
+  dprint(">>");
+  for(int j = 0; j < LCOUNT; j++){
+    if (! bkt->largest[j]) {
+      break;
+    };
+    dprint(" %llu(%zu)", bkt->largest[j]->hash, bkt->largest[j]->alloc);
+  };
+  dprint("\r\n");
+#endif
+  for (int i = 0; i < LCOUNT; i++) {
+    if (!bkt->largest[i]) {
+      dprint("[%d] <- %llu; %zu!\r\n", i, metric->hash, metric->alloc);
+      bkt->largest[i] = metric;
+      break;
+    }
+    if (metric == bkt->largest[i]) {
+      break;
+    }
+    if (metric->alloc > bkt->largest[i]->alloc) {
+      dprint("[%d] <- %llu: %zu\r\n", i, metric->hash, metric->alloc);
+      mc_metric_t *t = bkt->largest[i];
+      bkt->largest[i] = metric;
+      metric = t;
+    } else {
+      dprint("[%d] | %llu: %zu\r\n", i, bkt->largest[i]->hash, bkt->largest[i]->alloc);
+    }
+  }
+#ifdef DEBUG
+  dprint("<<");
+  for(int j = 0; j < LCOUNT; j++){
+    if (! bkt->largest[j]) {
+      break;
+    };
+    dprint(" %llu(%zu)", bkt->largest[j]->hash, bkt->largest[j]->alloc);
+  };
+  dprint("\r\n");
+#endif
+
+}
+
 void age(mcache_t *cache) {
+  dprint("age\r\n");
   for (int b = 0; b < cache->conf.buckets; b++) {
     // G1 -> G2
     for (int s = 0; s < SUBS; s++) {
@@ -85,6 +186,18 @@ void age(mcache_t *cache) {
       g2s->count += g1s->count;
       g2s->size = g2s->count;
       // Free the G1 metric  list of thbs bucket as we copbed bt all out
+    }
+    // make sure to clear the largest
+    for (int l = 0; l < LCOUNT; l++) {
+      // move largest over when we have them
+      if (cache->g1.buckets[b].largest[l]) {
+        insert_largest(&(cache->g2.buckets[b]), cache->g1.buckets[b].largest[l]);
+      } else {
+        // we can stop our loop when we find the first null
+        break;
+      }
+      // then set them to null
+      cache->g1.buckets[b].largest[l] = NULL;
     }
   }
   // free g1 buckets (we copied the content to g2)
@@ -256,9 +369,7 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   init_buckets(cache->conf, &(cache->g2));
   ERL_NIF_TERM term = enif_make_resource(env, cache);
   enif_release_resource(cache);
-  return  enif_make_tuple2(env,
-                           atom_ok,
-                           term);
+  return term;
 };
 
 
@@ -266,7 +377,7 @@ mc_metric_t *find_metric_g(mc_conf_t conf, mc_gen_t gen, uint64_t hash, uint16_t
   // Itterate over the existig metrics and see if we have already
   // seen this one.
   uint64_t bucket = hash % conf.buckets;
-  uint8_t sub = (hash >> 56) % SUBS;
+  uint8_t sub = subid(hash);
   for (int i = 0; i < gen.buckets[bucket].subs[sub].count; i++) {
     mc_metric_t *m = gen.buckets[bucket].subs[sub].metrics[i];
     if (m->name_len == name_len
@@ -293,7 +404,7 @@ mc_metric_t *find_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint
 mc_metric_t *find_metric_and_remove_g(mc_conf_t conf, mc_gen_t *gen, uint64_t hash, uint16_t name_len, uint8_t *name) {
   int i = 0;
   uint64_t bucket = hash % conf.buckets;
-  uint8_t sub = (hash >> 56) % SUBS;
+  uint8_t sub = subid(hash);
 
   // Itterate over the existig metrics and see if we have already
   // seen this one.
@@ -306,6 +417,7 @@ mc_metric_t *find_metric_and_remove_g(mc_conf_t conf, mc_gen_t *gen, uint64_t ha
       if (i != gen->buckets[bucket].subs[sub].count - 1) {
         gen->buckets[bucket].subs[sub].metrics[i] = gen->buckets[bucket].subs[sub].metrics[gen->buckets[bucket].subs[sub].count - 1];
       }
+      remove_largest(&(gen->buckets[bucket]), m);
       gen->buckets[bucket].subs[sub].count--;
       gen->alloc -= m->alloc;
       return m;
@@ -333,6 +445,7 @@ uint64_t remove_prefix_g(mc_conf_t conf, mc_gen_t *gen, uint16_t pfx_len, uint8_
           }
           gen->buckets[bucket].subs[sub].count--;
           gen->alloc -= m->alloc;
+          remove_largest(&(gen->buckets[bucket]), m);
           free_metric(m);
           counter++;
         }
@@ -363,28 +476,29 @@ mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t hash, uint16_t nam
 mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
 
   uint64_t bucket = hash % cache->conf.buckets;
-  uint8_t sub = (hash >> 56) % SUBS;
+  uint8_t sub = subid(hash);
   // Itterate over the existig metrics and see if we have already
   // seen this one.
   mc_metric_t *metric = find_metric_g(cache->conf, cache->g0, hash, name_len, name);
   if (metric) {
     return metric;
   }
-  mc_sub_bucket_t *b = &(cache->g0.buckets[bucket].subs[sub]);
+  mc_bucket_t *b = &(cache->g0.buckets[bucket]);
+  mc_sub_bucket_t *s = &(b->subs[sub]);
   // We start with a small cache and grow it as required, so we need to
   // make sure the new index doesn't exceet the count. If it does
   // double the size of the cache.
-  if (b->count >= b->size) {
-    mc_metric_t **new_metrics = mc_alloc(b->size * 2 * sizeof(mc_metric_t *));
+  if (s->count >= s->size) {
+    mc_metric_t **new_metrics = mc_alloc(s->size * 2 * sizeof(mc_metric_t *));
 #ifdef TAGGED
-    for (int i = 0; i < b->size * 2; i++) {
+    for (int i = 0; i < s->size * 2; i++) {
       new_metrics[i] = TAG_METRIC_L;
     }
 #endif
-    memcpy(new_metrics, b->metrics, b->count * sizeof(mc_metric_t *));
-    mc_free(b->metrics);
-    b->metrics = new_metrics;
-    b->size = b->size * 2;
+    memcpy(new_metrics, s->metrics, s->count * sizeof(mc_metric_t *));
+    mc_free(s->metrics);
+    s->metrics = new_metrics;
+    s->size = s->size * 2;
   }
   // we havn't seen the metric so we'll create a new one.
   metric = find_metric_and_remove_g(cache->conf, &(cache->g1), hash, name_len, name);
@@ -406,8 +520,9 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
     metric->tail = NULL;
   }
   cache->g0.alloc += metric->alloc;
-  b->metrics[b->count] = metric;
-  b->count++;
+  s->metrics[s->count] = metric;
+  s->count++;
+  insert_largest(b, metric);
   return metric;
 };
 
@@ -508,12 +623,12 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 
       uint64_t new_size = next->start + next->size - entry->start;
       uint64_t new_count = next->start - entry->start + next->count;
 
-      /* printf("Asked to write %d -> %d\r\n", offset, offset + count); */
-      /* printf("combining %d->%d(%d) and %d->%d(%d)\r\n", */
-      /*        entry->start, entry->start + entry->count, entry->start + entry->size, */
-      /*        next->start, next->start + next->count, next->start + next->size); */
-      /* printf("new range %d->%d(%d)\r\n", entry->start, entry->start + new_count, entry->start + new_size); */
-      /* fflush(stdout); */
+      dprint("Asked to write %lu -> %lu\r\n", offset, offset + count);
+      dprint("combining %ld->%ld(%ld) and %ld->%ld(%ld)\r\n",
+             entry->start, entry->start + entry->count, entry->start + entry->size,
+             next->start, next->start + next->count, next->start + next->size);
+      dprint("new range %ld->%llu(%lld)\r\n", entry->start, entry->start + new_count, entry->start + new_size);
+
 
       ErlNifUInt64 *new_data = (ErlNifUInt64 *) mc_alloc(new_size * sizeof(ErlNifUInt64));
 #ifdef TAGGED
@@ -526,10 +641,12 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 
       // recalculate the allocation
       metric->alloc -= (entry->size * sizeof(ErlNifUInt64));
       gen->alloc -= (entry->size * sizeof(ErlNifUInt64));
+
       metric->alloc -= (next->size * sizeof(ErlNifUInt64));
       gen->alloc -= (next->size * sizeof(ErlNifUInt64));
-      metric->alloc += new_size;
-      gen->alloc += new_size;
+
+      metric->alloc += new_size * sizeof(ErlNifUInt64);
+      gen->alloc += new_size * sizeof(ErlNifUInt64);
 
 
       entry->next = next->next;
@@ -543,9 +660,9 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 
 
       // now we calculate the delta of old and new start to get the offset in the
       // new array to copy data to then free it
-      /* printf("2nd chunk offset: %d\r\n", next->start - entry->start); */
-      /* printf("copying points: %d\r\n", next->start - entry->start); */
-      /* fflush(stdout); */
+      dprint("2nd chunk offset: %ld\r\n", next->start - entry->start);
+      dprint("copying points: %ld\r\n", next->start - entry->start);
+
       memcpy(entry->data + next->start - entry->start, next->data, next->count* sizeof(ErlNifUInt64));
       mc_free(next->data);
       mc_free(next);
@@ -599,7 +716,6 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 
 
 mc_metric_t *
 check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket) {
-  mc_metric_t *metric = NULL;
   if (max_alloc > cache->g0.alloc +
       cache->g1.alloc +
       cache->g2.alloc) {
@@ -629,10 +745,42 @@ check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket
   // and reduce the count and reduce the alloc;
 
   //TODO: This is not good!
+  mc_metric_t *metric = NULL;
   mc_sub_bucket_t *largest_sub =  NULL;
-  metric = NULL;
+  mc_bucket_t *largest_bkt =  NULL;
   int largest_idx = 0;
+  // try to find a metric using the largest cache first
+  for (int b = 0; b < cache->conf.buckets; b++) {
+    if (gen->buckets[b].largest[0] &&
+        (!metric || metric->alloc < gen->buckets[b].largest[0]->alloc)) {
+      largest_bkt = &(gen->buckets[b]);
+      metric = largest_bkt->largest[0];
+      largest_sub = &(largest_bkt->subs[subid(metric->hash)]);
+    }
+  }
+  if (metric) {
+    largest_idx = 0;
+    remove_largest(largest_bkt, metric);
+    // find the index of the metric
+    while (largest_idx < SUBS && largest_sub->metrics[largest_idx] != metric) {
+      largest_idx++;
+    }
+    // We didn't found anything that is problematic so we pretend it never
+    // happend, the metric is already removed from the largest index
+    if (largest_idx == SUBS) {
+      dprint("Oh my\r\n");
+      largest_idx = 0;
+      metric = NULL;
+      largest_bkt = NULL;
+      largest_sub = NULL;
+    }
+  }
   for (int i = 0; i < cache->conf.buckets; i++) {
+    // we break if we found a sutiable metric either in this loop or the loop before
+    if (metric) {
+      break;
+    }
+
     // We itterate through all buckets starting after the bucket we just edited
     // that way we avoid always changing the same buket over and over
     int b = (i + bucket + 1) % cache->conf.buckets;
@@ -648,14 +796,15 @@ check_limit(ErlNifEnv* env, mcache_t *cache, uint64_t max_alloc, uint64_t bucket
         }
       }
     }
-    if (metric) {
-      if (largest_idx != largest_sub->count - 1) {
-        largest_sub->metrics[largest_idx] = largest_sub->metrics[largest_sub->count - 1];
-      }
-      largest_sub->count--;
-      gen->alloc -= metric->alloc;
-      return metric;
+
+  }
+  if (metric) {
+    if (largest_idx != largest_sub->count - 1) {
+      largest_sub->metrics[largest_idx] = largest_sub->metrics[largest_sub->count - 1];
     }
+    largest_sub->count--;
+    gen->alloc -= metric->alloc;
+    return metric;
   }
   return NULL;
   // now we work on exporting the metric
@@ -693,9 +842,15 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   }
   uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
+  dprint("INSERT: %llu\r\n", hash);
   bucket = hash % cache->conf.buckets;
+  dprint("INSERT[%llu]: %llu\r\n", bucket, hash);
+
   metric = get_metric(cache, hash, name_bin.size, name_bin.data);
+  // Add the datapoint
   add_point(cache->conf, &(cache->g0), metric, offset, value.size / 8, (ErlNifUInt64 *) value.data);
+  // update largest
+  insert_largest(&(cache->g0.buckets[bucket]), metric);
 
   cache->inserts++;
   if (cache->inserts > cache->conf.age_cycle) {
