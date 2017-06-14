@@ -1,9 +1,11 @@
 #include "erl_nif.h"
-#include "mcache.h"
 #include <string.h>
 #include "stdio.h"
-
 #include "xxhash.h"
+
+//#define DEBUG
+#include "mcache.h"
+
 
 ErlNifResourceType* mcache_t_handle;
 static ERL_NIF_TERM atom_ok;
@@ -23,11 +25,14 @@ void print_entry(mc_entry_t *entry) {
   for (i=0; i < entry->count; i++) {
     printf(" %ld", entry->data[i]);
   };
-  printf("\r\n");
-  if (entry->next) {
-    print_entry(entry->next);
-  };
 
+  if (entry->next) {
+    printf(" |");
+    print_entry(entry->next);
+  } else {
+    printf("\r\n");
+  };
+  
 }
 
 void print_metric(mc_metric_t *metric) {
@@ -35,7 +40,7 @@ void print_metric(mc_metric_t *metric) {
   printf("  ");
   for(i = 0; i < metric->name_len; i++)
     printf("%c", (int) metric->name[i]);
-  printf("[%llu]:\r\n", metric->alloc);
+  printf("[%zu]:\r\n", metric->alloc);
   print_entry(metric->head);
 };
 
@@ -308,7 +313,8 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   ErlNifUInt64 initial_data_size;
   ErlNifUInt64 initial_entries;
   ErlNifUInt64 hash_seed;
-  if (argc != 6) {
+  ErlNifUInt64 max_gap;
+  if (argc != 7) {
     return enif_make_badarg(env);
   };
   if (!enif_get_uint64(env, argv[0], &max_alloc)) return enif_make_badarg(env);
@@ -328,6 +334,8 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (!enif_get_uint64(env, argv[5], &hash_seed)) return enif_make_badarg(env);
   if (hash_seed <= 0) return enif_make_badarg(env);
 
+  if (!enif_get_uint64(env, argv[6], &max_gap)) return enif_make_badarg(env);
+
   cache = (mcache_t *) enif_alloc_resource(mcache_t_handle, sizeof(mcache_t));
 
 #ifdef TAGGED
@@ -342,6 +350,7 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   cache->conf.initial_data_size = initial_data_size;
   cache->conf.initial_entries = initial_entries;
   cache->conf.hash_seed = hash_seed;
+  cache->conf.max_gap = max_gap;
 
   // some cache wqide counters
   cache->inserts = 0;
@@ -570,11 +579,12 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 
     //the start of the next chunk
 
     // we allocate a new chunk behind this and continue with that.
-    size_t internal_offset = offset - entry->start;
+    uint64_t internal_offset = offset - entry->start;
 
     // or we'd have gaps
-    if (internal_offset > entry->count) {
-
+    dprint("CHECK: %llu > (%u + %llu)!\r\n", internal_offset, entry->count, conf.max_gap);
+    if (internal_offset > (entry->count + conf.max_gap)) {
+      dprint("we got a gap!\r\n");
       // TODO: we could combine that with merge and dertermin if we can
       // just pull the start back but that remains for another day
       mc_entry_t *next = mc_alloc(sizeof(mc_entry_t));
@@ -617,7 +627,7 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 
 
     // if we would overlap with the next chunk we combine the two
     if (entry->next &&
-        offset + count >= entry->next->start) {
+        offset + count + conf.max_gap >= entry->next->start) {
       // the new size is the delta between our start and the total end of the next chunk
       mc_entry_t *next = entry->next;
       uint64_t new_size = next->start + next->size - entry->start;
@@ -651,17 +661,23 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 
 
       entry->next = next->next;
       // copy, free and reassign old data
-      memcpy(new_data, entry->data, entry->count* sizeof(ErlNifUInt64));
+      memcpy(new_data, entry->data, entry->count * sizeof(ErlNifUInt64));
       mc_free(entry->data);
       entry->data = new_data;
       // set new size and count
       entry->size = new_size;
-      entry->count = new_count;
 
       // now we calculate the delta of old and new start to get the offset in the
       // new array to copy data to then free it
       dprint("2nd chunk offset: %ld\r\n", next->start - entry->start);
       dprint("copying points: %ld\r\n", next->start - entry->start);
+
+      dprint("Filling between %ld and %ld\r\n", entry->count, next->start - entry->start);
+      for (int i = entry->count; i < next->start - entry->start; i++) {
+        entry->data[i] = 0;
+      }
+
+      entry->count = new_count;
 
       memcpy(entry->data + next->start - entry->start, next->data, next->count* sizeof(ErlNifUInt64));
       mc_free(next->data);
@@ -701,6 +717,11 @@ void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 
       entry->size = new_size;
       metric->alloc += (entry->size * sizeof(ErlNifUInt64));
       gen->alloc += (entry->size * sizeof(ErlNifUInt64));
+    }
+
+    // fill gap with zeros
+    for (int i = entry->count; i < internal_offset; i++) {
+      entry->data[i] = 0;
     }
 
     memcpy(entry->data + internal_offset, values, count * sizeof(ErlNifUInt64));
@@ -842,9 +863,8 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     return enif_make_badarg(env);
   }
   uint64_t hash = XXH64(name_bin.data, name_bin.size, cache->conf.hash_seed) ;
-  dprint("INSERT: %llu\r\n", hash);
   bucket = hash % cache->conf.buckets;
-  dprint("INSERT[%llu]: %llu\r\n", bucket, hash);
+  dprint("INSERT[%llu]: %llu %lu@%lu\r\n", bucket, hash, value.size / 8, offset);
 
   metric = get_metric(cache, hash, name_bin.size, name_bin.data);
   // Add the datapoint
@@ -1013,6 +1033,7 @@ print_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   print_gen(cache->conf, cache->g0);
   print_gen(cache->conf, cache->g1);
   print_gen(cache->conf, cache->g2);
+  fflush(stdout);
   return  atom_ok;
 };
 static ERL_NIF_TERM
@@ -1127,7 +1148,7 @@ is_empty_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 };
 
 static ErlNifFunc nif_funcs[] = {
-  {"new", 6, new_nif},
+  {"new", 7, new_nif},
   {"print", 1, print_nif},
   {"stats", 1, stats_nif},
   {"is_empty", 1, is_empty_nif},

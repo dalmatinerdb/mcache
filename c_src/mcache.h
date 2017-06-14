@@ -1,6 +1,7 @@
 #ifndef MC_H_INCLUDED
 #define MC_H_INCLUDED
 
+
 #define SUBS 64
 #define LCOUNT 10
 #include <stdint.h>
@@ -60,8 +61,6 @@
 #define mc_free(ptr) free(ptr)
 
 #define subid(x) (x >> 56) % SUBS
-
-//#define DEBUG
 
 #ifdef DEBUG
 #define DPRINT 1
@@ -147,6 +146,7 @@ typedef struct {
   uint16_t initial_data_size;
   uint16_t initial_entries;
   uint64_t hash_seed;
+  uint64_t max_gap;
 } mc_conf_t;
 
 typedef struct {

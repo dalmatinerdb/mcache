@@ -63,6 +63,7 @@ crash() ->
                   {age_cycle, pos_integer()} |
                   {initial_data_size, pos_integer()} |
                   {initial_entries, pos_integer()} |
+                  {max_gap, pos_integer()} |
                   {hash_seed, pos_integer()}.
 
 %%====================================================================
@@ -79,8 +80,9 @@ new(MaxAlloc, Opts) ->
     InitialDataSize = proplists:get_value(initial_data_size, Opts, 32),
     InitialEntries = proplists:get_value(initial_entries, Opts, 4),
     HashSeed = proplists:get_value(hash_seed, Opts, 42),
+    MaxGap = proplists:get_value(max_gap, Opts, 0),
     new(MaxAlloc, Buckets, AgeCycle, InitialDataSize, InitialEntries,
-        HashSeed).
+        HashSeed, MaxGap).
 -spec pop(mcache_handle()) ->
                  undefined |
                  {ok, key(), chunks()}.
@@ -142,7 +144,7 @@ print(_Handle) ->
 %%====================================================================
 
 new(_MaxAlloc, _Buckets, _AgeCycle, _InitialDataSize, _InitialEntries,
-    _HashSeed) ->
+    _HashSeed, _MaxGap) ->
     erlang:nif_error(nif_library_not_loaded).
 
 init() ->
