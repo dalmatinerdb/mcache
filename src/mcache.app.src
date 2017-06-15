@@ -11,5 +11,5 @@
 
   {maintainers, ["Heinz N. Gies"]},
   {licenses, ["BSD"]},
-  {links, [{"Github", "https://github.com/dalmatinerdb/mcache"]}
+  {links, [{"Github", "https://github.com/dalmatinerdb/mcache"}]}
  ]}.
