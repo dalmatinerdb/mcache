@@ -1,5 +1,5 @@
 {application, mcache,
- [{description, "An OTP library"},
+ [{description, "Efficient metric memory cache"},
   {vsn, git},
   {registered, []},
   {applications,
@@ -9,7 +9,7 @@
   {env,[]},
   {modules, []},
 
-  {maintainers, []},
-  {licenses, []},
-  {links, []}
+  {maintainers, ["Heinz N. Gies"]},
+  {licenses, ["BSD"]},
+  {links, [{"Github", "https://github.com/dalmatinerdb/mcache"]}
  ]}.
