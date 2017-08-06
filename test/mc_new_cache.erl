@@ -6,28 +6,21 @@ init([TotalSize, Opts]) ->
     mcache:new(TotalSize, Opts).
 
 do_put(BM, Time, Data, C) ->
-    do_put(BM, Time, Data, C, [{buckets, 128}]).
-
-do_put(_BM, _Time, <<>>, _C, Acc) ->
-    Acc;
-
-do_put(BM, Time, <<V:8/binary, Rest/binary>>, C, Acc)
-  when is_binary(BM), is_integer(Time) ->
+    Acc = [{buckets, 128}],
     %%io:format(user, "mcache:insert(H, ~p, ~p, ~p).\n", [BM, Time, V]),
-    Acc1 = case mcache:insert(C, BM, Time, V) of
-               ok ->
-                   Acc;
-               {overflow, _, Overflow} ->
-                   case length(Overflow) of
-                       1 ->
-                           ok;
-                       N ->
-                           io:format(user, "Multi element write: ~p~n",
-                                     [Overflow])
-                   end,
-                   lists:foldl(fun({_, Vs}, AccIn) ->
-                                      [{write, byte_size(Vs)}
-                                       | AccIn]
-                              end, Acc, Overflow)
-           end,
-    do_put(BM, Time + 1, Rest, C, Acc1).
+    case mcache:insert(C, BM, Time, Data) of
+        ok ->
+            Acc;
+        {overflow, _, Overflow} ->
+            case length(Overflow) of
+                1 ->
+                    ok;
+                N ->
+                    io:format(user, "Multi element write: ~p~n",
+                              [Overflow])
+            end,
+            lists:foldl(fun({_, Vs}, AccIn) ->
+                                [{write, byte_size(Vs)}
+                                 | AccIn]
+                        end, Acc, Overflow)
+    end.

@@ -1,10 +1,14 @@
 #ifndef MC_H_INCLUDED
 #define MC_H_INCLUDED
 
+#include "erl_nif.h"
+#include <string.h>
+#include "stdio.h"
+#include "xxhash.h"
+#include <stdint.h>
 
 #define SUBS 64
 #define LCOUNT 10
-#include <stdint.h>
 
 /*
  ┌────────────┐
@@ -117,15 +121,15 @@ typedef struct {
   uint32_t size;
   uint32_t count;
   mc_metric_t **metrics;
-} mc_sub_bucket_t;
+} mc_sub_slot_t;
 
 typedef struct {
   #ifdef TAGGED
   uint32_t tag;
   #endif
-  mc_sub_bucket_t subs[SUBS];
+  mc_sub_slot_t subs[SUBS];
   mc_metric_t *largest[LCOUNT];
-} mc_bucket_t;
+} mc_slot_t;
 
 typedef struct {
   #ifdef TAGGED
@@ -133,7 +137,7 @@ typedef struct {
   #endif
   uint8_t v;
   size_t alloc;
-  mc_bucket_t *buckets;
+  mc_slot_t *slots;
 } mc_gen_t;
 
 typedef struct {
@@ -141,7 +145,7 @@ typedef struct {
   uint32_t tag;
   #endif
   uint64_t max_alloc;
-  uint32_t buckets;
+  uint32_t slots;
   uint64_t age_cycle;
   uint16_t initial_data_size;
   uint16_t initial_entries;
@@ -159,6 +163,12 @@ typedef struct {
   mc_gen_t g0;
   mc_gen_t g1;
   mc_gen_t g2;
-} mcache_t;
+} mc_bucket_t;
+
+// Print functions
+void print_gen(mc_conf_t conf, mc_gen_t gen);
+
+// init functions
+void init_slots(mc_conf_t conf,/*@out@*/ mc_gen_t *gen);
 
 #endif // MC_H_INCLUDED
