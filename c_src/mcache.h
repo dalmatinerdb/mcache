@@ -145,10 +145,10 @@ typedef struct {
   uint32_t tag;
   #endif
   uint64_t max_alloc;
-  uint32_t slots;
+  uint64_t slots;
   uint64_t age_cycle;
-  uint16_t initial_data_size;
-  uint16_t initial_entries;
+  uint64_t initial_data_size;
+  uint64_t initial_entries;
   uint64_t hash_seed;
   uint64_t max_gap;
 } mc_conf_t;
@@ -165,10 +165,39 @@ typedef struct {
   mc_gen_t g2;
 } mc_bucket_t;
 
+
+ErlNifResourceType* mc_bucket_t_handle;
+static ERL_NIF_TERM atom_ok;
+static ERL_NIF_TERM atom_undefined;
+static ERL_NIF_TERM atom_overflow;
+
 // Print functions
-void print_gen(mc_conf_t conf, mc_gen_t gen);
+void print_bucket(mc_bucket_t *bucket);
 
 // init functions
 void init_slots(mc_conf_t conf,/*@out@*/ mc_gen_t *gen);
+
+// info
+ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket);
+
+
+//impl
+uint8_t is_empty(mc_bucket_t *bucket);
+void free_bucket(mc_bucket_t *bucket);
+void free_metric(mc_metric_t *m);
+void age(mc_bucket_t *bucket);
+ERL_NIF_TERM serialize_metric(ErlNifEnv* env, mc_metric_t *metric);
+void insert_largest(mc_slot_t *slot, mc_metric_t *metric);
+mc_metric_t *find_metric(mc_bucket_t *bucket, uint64_t hash, uint16_t name_len, uint8_t *name);
+mc_metric_t *find_metric_and_remove(mc_bucket_t *bucket, uint64_t hash, uint16_t name_len, uint8_t *name);
+uint64_t remove_prefix(mc_bucket_t *bucket, uint16_t pfx_len, uint8_t *pfx);
+mc_metric_t *get_metric(mc_bucket_t *bucket, uint64_t hash, uint16_t name_len, uint8_t *name);
+void add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 offset, size_t count, ErlNifUInt64* values);
+mc_metric_t * check_limit(mc_bucket_t *bucket, uint64_t max_alloc, uint64_t slot);
+
+mc_metric_t* take(mc_bucket_t *bucket, ErlNifBinary name);
+mc_metric_t* get(mc_bucket_t *bucket, ErlNifBinary name);
+mc_metric_t* pop(mc_bucket_t *bucket);
+mc_metric_t* insert(mc_bucket_t *bucket, ErlNifBinary name, uint64_t offset, ErlNifBinary data);
 
 #endif // MC_H_INCLUDED

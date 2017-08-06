@@ -1,6 +1,6 @@
 #include "mcache.h"
 
-void print_entry(mc_entry_t *entry) {
+static void print_entry(mc_entry_t *entry) {
   {};
   uint8_t i;
   if (!entry) {
@@ -21,7 +21,7 @@ void print_entry(mc_entry_t *entry) {
   };
 }
 
-void print_metric(mc_metric_t *metric) {
+static void print_metric(mc_metric_t *metric) {
   uint16_t i;
   printf("  ");
   for(i = 0; i < metric->name_len; i++)
@@ -30,7 +30,7 @@ void print_metric(mc_metric_t *metric) {
   print_entry(metric->head);
 }
 
-void print_gen(mc_conf_t conf, mc_gen_t gen) {
+static void print_gen(mc_conf_t conf, mc_gen_t gen) {
   int size = 0;
   int count = 0;
   for (int i = 0; i < conf.slots; i++) {
@@ -48,3 +48,9 @@ void print_gen(mc_conf_t conf, mc_gen_t gen) {
     }
   }
 }
+
+void print_bucket(mc_bucket_t *bucket) {
+  print_gen(bucket->conf, bucket->g0);
+  print_gen(bucket->conf, bucket->g1);
+  print_gen(bucket->conf, bucket->g2);
+};

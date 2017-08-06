@@ -27,3 +27,39 @@ void init_slots(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
     };
   }
 }
+
+mc_bucket_t* init_bucket(mc_conf_t config) {
+  mc_bucket_t *bucket;
+  bucket = (mc_bucket_t *) enif_alloc_resource(mc_bucket_t_handle, sizeof(mc_bucket_t));
+#ifdef TAGGED
+  bucket->tag = TAG_BUCKET;
+#endif
+
+  bucket->conf = config;
+  // some bucket wqide counters
+  bucket->inserts = 0;
+  bucket->age = 0;
+
+  //now set up the tree genreations
+  bucket->g0.v = 0;
+  bucket->g0.alloc = 0;
+#ifdef TAGGED
+  bucket->g0.tag = TAG_GEN;
+#endif
+
+  init_slots(bucket->conf, &(bucket->g0));
+  bucket->g1.v = 1;
+  bucket->g1.alloc = 0;
+#ifdef TAGGED
+  bucket->g1.tag = TAG_GEN;
+#endif
+  init_slots(bucket->conf, &(bucket->g1));
+  bucket->g2.v = 2;
+  bucket->g2.alloc = 0;
+#ifdef TAGGED
+  bucket->g2.tag = TAG_GEN;
+#endif
+  init_slots(bucket->conf, &(bucket->g2));
+
+  return bucket;
+}
