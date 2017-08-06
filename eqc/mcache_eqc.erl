@@ -26,12 +26,12 @@ new(Size, Opts) ->
     H = mcache:new(Size, Opts),
     {H, #{}, []}.
 
-insert({H, T, Ds}, Gap, N, O, V) ->
-    case mcache:insert(H, N, O, V) of
+insert({H, T, Ds}, Gap, B, N, O, V) ->
+    case mcache:insert(H, B, N, O, V) of
         ok ->
-            T1 = add_t(T, N, O, V),
+            T1 = add_t(T, {B, N}, O, V),
             {H, T1, Ds};
-        {overflow, K, Data} ->
+        {overflow, B, K, Data} ->
             T1 = add_t(T, N, O, V),
             T2 = maps:remove(K, T1),
             {H, T2, [{shrink_t(Data, 0), shrink_t(maps:get(K, T1), Gap)} | Ds]}
@@ -49,22 +49,22 @@ pop({H, T, Ds}, Gap) ->
     case mcache:pop(H) of
         undefined ->
             {H, T, Ds};
-        {ok, K , Data} ->
-            T1 = maps:remove(K, T),
-            {H, T1, [{shrink_t(Data, 0), shrink_t(maps:get(K, T), Gap)} | Ds]}
+        {ok, B, K , Data} ->
+            T1 = maps:remove({B, K}, T),
+            {H, T1, [{shrink_t(Data, 0), shrink_t(maps:get({B, K}, T), Gap)} | Ds]}
     end.
 
-take({H, T, Ds}, Gap, N) ->
-    case mcache:take(H, N) of
+take({H, T, Ds}, Gap, B, N) ->
+    case mcache:take(H, B, N) of
         undefined ->
             {H, T, Ds};
         {ok, Data} ->
-            T1 = maps:remove(N, T),
-            {H, T1, [{shrink_t(Data, 0), shrink_t(maps:get(N, T), Gap)} | Ds]}
+            T1 = maps:remove({B, N}, T),
+            {H, T1, [{shrink_t(Data, 0), shrink_t(maps:get({B, N}, T), Gap)} | Ds]}
     end.
 
-get({H, T, Ds}, N) ->
-    mcache:get(H, N),
+get({H, T, Ds}, B, N) ->
+    mcache:get(H, B, N),
     {H, T, Ds}.
 
 val() ->
@@ -102,12 +102,12 @@ cache(MaxSize, Gap, Opts, Size) ->
           [H], [cache(MaxSize, Gap, Opts, Size -1)],
           frequency(
             [
-             {1,   {call, ?MODULE, age, [H]}},
-             {10,  {call, ?MODULE, stats, [H]}},
-             {100, {call, ?MODULE, insert, [H, Gap, key(), v_time(), val()]}},
-             {15,  {call, ?MODULE, pop, [H, Gap]}},
-             {15,  {call, ?MODULE, take, [H, Gap, key()]}},
-             {20,  {call, ?MODULE, get, [H, key()]}}
+             %%{1,   {call, ?MODULE, age, [H]}},
+             %%{10,  {call, ?MODULE, stats, [H]}},
+             {100, {call, ?MODULE, insert, [H, Gap, key(), key(), v_time(), val()]}}%,
+             %%{15,  {call, ?MODULE, pop, [H, Gap]}},
+             %%{15,  {call, ?MODULE, take, [H, Gap, key(), key()]}},
+             %%{20,  {call, ?MODULE, get, [H, key(), key()]}}
             ]))).
 
 c_size() ->
@@ -122,8 +122,8 @@ all_keys_c(H, Acc) ->
     case mcache:pop(H) of
         undefined ->
             lists:sort(Acc);
-        {ok, K , Data} ->
-            all_keys_c(H, [{K, shrink_t(Data, 0)} | Acc])
+        {ok, B, K , Data} ->
+            all_keys_c(H, [{{B, K}, shrink_t(Data, 0)} | Acc])
     end.
 
 size_c([], N) ->
@@ -171,16 +171,13 @@ empty(C) ->
             empty(C)
     end.
 
-filter_pfx([{K, V} | R], Pfx, Acc) ->
-    S = byte_size(Pfx),
-    case K of
-        <<Pfx:S/binary, _/binary>> ->
-            filter_pfx(R, Pfx, Acc);
-        _ ->
-            filter_pfx(R, Pfx, [{K, V} | Acc])
-    end;
+filter_bucket([{{Bkt, _K}, _V} | R], Bkt, Acc) ->
+    filter_bucket(R, Bkt, Acc);
 
-filter_pfx([], _Pfx, Acc) ->
+filter_bucket([E | R], Bkt, Acc) ->
+    filter_bucket(R, Bkt, [E | Acc]);
+
+filter_bucket([], _Pfx, Acc) ->
     lists:reverse(Acc).
 
 %%====================================================================
@@ -199,6 +196,7 @@ maybe_client() ->
         {error, already_started, Client} ->
             {ok, Client};
         E ->
+            io:format(user, ">>>> E: ~p~n", [E]),
             E
     end.
 -endif.
@@ -248,10 +246,10 @@ prop_is_empty() ->
              remote_eval(is_empty_body, [Cache])
             ))).
 
-insert_pop_body(S, K, T, V) ->
-    In = {K, T, V},
+insert_pop_body(S, B, K, T, V) ->
+    In = {B, K, T, V},
     H = mcache:new(S, []),
-    mcache:insert(H, K, T, V),
+    mcache:insert(H, B, K, T, V),
     R1 = mcache:pop(H),
     R2 = mcache:pop(H),
     {In, R1, R2}.
@@ -260,35 +258,35 @@ prop_insert_pop() ->
     ?SETUP(
        fun setup/0,
        ?FORALL(
-          {S, K, T, V}, {c_size(), key(), v_time(), val()},
+          {S, B, K, T, V}, {c_size(), key(), key(), v_time(), val()},
           begin
               {In, R1, R2} =
-                  remote_eval(insert_pop_body, [S, K, T, V]),
+                  remote_eval(insert_pop_body, [S, B, K, T, V]),
               ?WHENFAIL(io:format(user, "In: ~p~nR1: ~p~nR2: ~p~n",
                                   [In, R1, R2]),
-                        R1 == {ok,K ,[{T, V}]} andalso
+                        R1 == {ok, B, K ,[{T, V}]} andalso
                         R2 == undefined)
           end)).
 
-remove_prefix_body(Cache, Pfx, Gap) ->
+remove_bucket_body(Cache, Bucket, Gap) ->
     {H, T, Ds} = eval(Cache),
-    mcache:remove_prefix(H, Pfx),
+    mcache:remove_bucket(H, Bucket),
     TreeKs = all_keys_t(T, Gap),
-    TreeKs1 = filter_pfx(TreeKs, Pfx, []),
+    TreeKs1 = filter_bucket(TreeKs, Bucket, []),
     CacheKs = all_keys_c(H, []),
     Ds1 = check_elements(Ds),
     {CacheKs, TreeKs, TreeKs1, T, Ds1}.
 
-prop_remove_prefix() ->
+prop_remove_bucket() ->
     ?SETUP(
        fun setup/0,
        ?FORALL(
-          {MaxSize, Gap, Opts, Pfx}, {c_size(), nat(), opts(), key()},
+          {MaxSize, Gap, Opts, Bkt}, {c_size(), nat(), opts(), key()},
           ?FORALL(
              Cache, cache(MaxSize, Gap, Opts),
              begin
                  {CacheKs, TreeKs, TreeKs1, T, Ds1} =
-                     remote_eval(remove_prefix_body, [Cache, Pfx, Gap]),
+                     remote_eval(remove_bucket_body, [Cache, Bkt, Gap]),
                  ?WHENFAIL(io:format(user, "Cache: ~p~nTree:~p / ~p~nDs: ~p~n",
                                      [CacheKs, TreeKs, T, Ds1]),
                            CacheKs == TreeKs1 andalso

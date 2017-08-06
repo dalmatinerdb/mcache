@@ -2,7 +2,7 @@
 
 -define(DATA_SIZE, 8).
 -record(state, {tbl, cache_size}).
--export([do_put/4, init/1, stop/1, info/1]).
+-export([do_put/5, init/1, stop/1, info/1]).
 
 init(CacheSize) ->
     #state{
@@ -16,8 +16,9 @@ stop(#state{tbl = T}) ->
 info(#state{tbl = T}) ->
     ets:info(T).
 
-do_put(BM, Time, Value, #state{tbl = T, cache_size = CacheSize})
-  when is_binary(BM), is_integer(Time) ->
+do_put(Bucket, Metric, Time, Value, #state{tbl = T, cache_size = CacheSize})
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
+    BM = term_to_binary({Bucket, Metric}),
     Len = byte_size(Value) div ?DATA_SIZE,
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.

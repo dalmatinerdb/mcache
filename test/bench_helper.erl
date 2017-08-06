@@ -23,10 +23,11 @@ run_all_points(Mod, State, MetricCount, I, PointsPerMetric,
 write_all_metrics(_Mod, _State, 0, _I, _PointsPerWrite, Acc) ->
     Acc;
 write_all_metrics(Mod, State, MetricCount, I, PointsPerWrite, {C, W}) ->
+    Bucket = integer_to_binary(MetricCount rem 10),
     Metric = integer_to_binary(MetricCount),
     Value = << <<I:64>> || _ <- lists:seq(1, PointsPerWrite) >>,
     Time = I,
-    Res = Mod:do_put(Metric, Time*PointsPerWrite, Value, State),
+    Res = Mod:do_put(Bucket, Metric, Time*PointsPerWrite, Value, State),
     Acc1 = {C + length(Res),
             W + lists:sum([N || {write, N} <- Res])},
     write_all_metrics(Mod, State, MetricCount - 1, I, PointsPerWrite, Acc1).
@@ -82,21 +83,6 @@ old_run(MetricCount, PointsPerMetric, PointsPerWrite) ->
     io:format(user, "~nOld[~3b]: ~15b | ~15b | ~15b | ~15b",
               [PointsPerWrite, TO, WritesO, WrittenO, Mem]).
 
-bench_01_old_test_() ->
-    {timeout, 60,
-     fun () ->
-             MetricCount = ?MCOUNT,
-             PointsPerMetric = ?PPM,
-             io:format(user, "~n     ~20s | ~15s | ~15s | ~15s | Opts",
-                       ["Time", "Writes", "Written Bytes", "Memory"]),
-             old_run(MetricCount, PointsPerMetric, 1),
-             erlang:garbage_collect(),
-             old_run(MetricCount, PointsPerMetric, 10),
-             erlang:garbage_collect(),
-             old_run(MetricCount, PointsPerMetric, 100),
-             ?assert(true)
-     end}.
-
 bench_11_new_test_() ->
     {timeout, 600,
      fun () ->
@@ -117,6 +103,22 @@ bench_11_new_test_() ->
 
              ?assert(true)
      end}.
+
+bench_21_old_test_() ->
+    {timeout, 60,
+     fun () ->
+             MetricCount = ?MCOUNT,
+             PointsPerMetric = ?PPM,
+             io:format(user, "~n     ~20s | ~15s | ~15s | ~15s | Opts",
+                       ["Time", "Writes", "Written Bytes", "Memory"]),
+             old_run(MetricCount, PointsPerMetric, 1),
+             erlang:garbage_collect(),
+             old_run(MetricCount, PointsPerMetric, 10),
+             erlang:garbage_collect(),
+             old_run(MetricCount, PointsPerMetric, 100),
+             ?assert(true)
+     end}.
+
 
 %%43720
 %%54000
