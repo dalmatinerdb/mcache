@@ -4,7 +4,7 @@
 
 -compile(export_all).
 
--define(LOCAL, 1).
+%%-define(LOCAL, 1).
 
 %%====================================================================
 %% Generators & Helpers
