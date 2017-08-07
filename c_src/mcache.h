@@ -63,13 +63,14 @@
 
 
 // defining alloc and free functions so we can easiely switch between them
-/*
-  #define mc_alloc(size) malloc(size)
-  #define mc_free(ptr) free(ptr)
-*/
-
+#define EALLOC // use erlangallocator
+#ifndef EALLOC
+#define mc_alloc(size) malloc(size)
+#define mc_free(ptr) free(ptr)
+#else
 #define mc_alloc(size) enif_alloc(size)
 #define mc_free(ptr) enif_free(ptr)
+#endif
 
 #define subid(x) (x >> 56) % SUBS
 
