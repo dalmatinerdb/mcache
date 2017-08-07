@@ -3,11 +3,12 @@
 -on_load(init/0).
 
 %% API exports
--export([new/2, pop/1, insert/4, print/1, stats/1, get/2, age/1,
-         take/2 , is_empty/1, remove_prefix/2
+-export([new/2, pop/1, insert/5, print/1, stats/1, get/3, age/1,
+         take/3 , is_empty/1, remove_prefix/2
         ]).
 
 -type mcache_handle() :: binary().
+-type bucket() :: binary().
 -type key() :: binary().
 -type offset() :: non_neg_integer().
 -type values() :: <<_:_*64>>.
@@ -72,17 +73,17 @@ new(MaxAlloc, Opts) ->
 pop(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
--spec insert(mcache_handle(), key(), offset(), values()) ->
+-spec insert(mcache_handle(), bucket(), key(), offset(), values()) ->
                     ok |
                     {overflow, key(), chunks()}.
-insert(_Handle, _Name, _Offset, _Value) ->
+insert(_Handle, _Bucket, _Name, _Offset, _Value) ->
     erlang:nif_error(nif_library_not_loaded).
 
--spec get(mcache_handle(), key()) ->
+-spec get(mcache_handle(), bucket(), key()) ->
                  undefined |
                  {ok, chunks()}.
 
-get(_Handle, _Name) ->
+get(_Handle, _Bucket, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
 
 -spec remove_prefix(mcache_handle(), key()) ->
@@ -93,11 +94,11 @@ remove_prefix(_Handle, _Name) ->
     {ok, 0}.
 %%erlang:nif_error(nif_library_not_loaded).
 
--spec take(mcache_handle(), key()) ->
+-spec take(mcache_handle(), bucket(), key()) ->
                   undefined |
                   {ok, chunks()}.
 
-take(_Handle, _Name) ->
+take(_Handle, _Bucket, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
 
 

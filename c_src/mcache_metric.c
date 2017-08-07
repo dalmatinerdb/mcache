@@ -42,7 +42,7 @@ ERL_NIF_TERM metric_serialize(ErlNifEnv* env, mc_metric_t *metric) {
   return reverse;
 }
 
-void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNifUInt64 offset, size_t count, ErlNifUInt64* values) {
+void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, uint64_t offset, size_t count, uint64_t* values) {
   // If eitehr we have no data yet or the current data is larger then
   // the offset we generate a new metric.
   // In both cases next will be the current head given that next might
@@ -139,7 +139,7 @@ void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, ErlNif
       uint64_t new_size = next->start + next->size - entry->start;
       uint64_t new_count = next->start - entry->start + next->count;
 
-      dprint("Asked to write %lu -> %lu\r\n", offset, offset + count);
+      dprint("Asked to write %llu -> %llu\r\n", offset, offset + count);
       dprint("combining %ld->%ld(%ld) and %ld->%ld(%ld)\r\n",
              entry->start, entry->start + entry->count, entry->start + entry->size,
              next->start, next->start + next->count, next->start + next->size);

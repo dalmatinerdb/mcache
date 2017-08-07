@@ -160,7 +160,7 @@ typedef struct {
   uint64_t max_gap;
 } mc_conf_t;
 
-typedef struct {
+typedef struct mc_bucket {
   #ifdef TAGGED
   uint32_t tag;
   #endif
@@ -169,6 +169,7 @@ typedef struct {
   mc_gen_t g0;
   mc_gen_t g1;
   mc_gen_t g2;
+  struct mc_bucket *next;
 } mc_bucket_t;
 
 typedef struct {
@@ -186,15 +187,10 @@ static ERL_NIF_TERM atom_undefined;
 static ERL_NIF_TERM atom_overflow;
 
 
-
 // Print functions
 void print_cache(mcache_t *cache);
 
-// init functions
-void init_slots(mc_conf_t conf,/*@out@*/ mc_gen_t *gen);
-
 // info
-mcache_t* init_cache(mc_conf_t config);
 ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache);
 
 #endif // MC_H_INCLUDED

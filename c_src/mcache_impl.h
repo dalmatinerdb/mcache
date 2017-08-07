@@ -10,10 +10,11 @@ mc_metric_t *get_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8
 mc_metric_t *find_metric(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name);
 mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t hash, uint16_t name_len, uint8_t *name);
 
-mc_metric_t* take(mcache_t *cache, ErlNifBinary name);
-mc_metric_t* get(mcache_t *cache, ErlNifBinary name);
+mc_metric_t* take(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len);
+mc_metric_t* get(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len);
 mc_metric_t* pop(mcache_t *cache);
-mc_metric_t* insert(mcache_t *cache, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len);
+mc_metric_t *insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len);
 void cache_free(mcache_t* c);
+mcache_t* cache_init(mc_conf_t config);
 
 #endif // MC_IMPL_H_INCLUDED

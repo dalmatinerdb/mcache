@@ -1,14 +1,14 @@
 -module(mc_new_cache).
 
--export([do_put/4, init/1]).
+-export([do_put/5, init/1]).
 
 init([TotalSize, Opts]) ->
     mcache:new(TotalSize, Opts).
 
-do_put(BM, Time, Data, C) ->
+do_put(Bucket, Metric, Time, Data, C) ->
     Acc = [{buckets, 128}],
     %%io:format(user, "mcache:insert(H, ~p, ~p, ~p).\n", [BM, Time, V]),
-    case mcache:insert(C, BM, Time, Data) of
+    case mcache:insert(C, Bucket, Metric, Time, Data) of
         ok ->
             Acc;
         {overflow, _, Overflow} ->

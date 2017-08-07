@@ -7,29 +7,38 @@ new_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   dprint("new\r\n");
   mcache_t *cache;
   mc_conf_t conf;
+  ErlNifUInt64 val;
+
   if (argc != 7) {
     return enif_make_badarg(env);
   };
-  if (!enif_get_uint64(env, argv[0], &conf.max_alloc)) return enif_make_badarg(env);
+  if (!enif_get_uint64(env, argv[0], &val)) return enif_make_badarg(env);
+  conf.max_alloc = val;
 
-  if (!enif_get_uint64(env, argv[1], &conf.slots)) return enif_make_badarg(env);
+  if (!enif_get_uint64(env, argv[1], &val)) return enif_make_badarg(env);
+  conf.slots = val;
   if (conf.slots <= 0) return enif_make_badarg(env);
 
-  if (!enif_get_uint64(env, argv[2], &conf.age_cycle)) return enif_make_badarg(env);
+  if (!enif_get_uint64(env, argv[2], &val)) return enif_make_badarg(env);
+  conf.age_cycle = val;
   if (conf.age_cycle <= 0) return enif_make_badarg(env);
 
-  if (!enif_get_uint64(env, argv[3], &conf.initial_data_size)) return enif_make_badarg(env);
+  if (!enif_get_uint64(env, argv[3], &val)) return enif_make_badarg(env);
+  conf.initial_data_size = val;
   if (conf.initial_data_size <= 0) return enif_make_badarg(env);
 
-  if (!enif_get_uint64(env, argv[4], &conf.initial_entries)) return enif_make_badarg(env);
+  if (!enif_get_uint64(env, argv[4], &val)) return enif_make_badarg(env);
+  conf.initial_entries = val;
   if (conf.initial_entries <= 0) return enif_make_badarg(env);
 
-  if (!enif_get_uint64(env, argv[5], &conf.hash_seed)) return enif_make_badarg(env);
+  if (!enif_get_uint64(env, argv[5], &val)) return enif_make_badarg(env);
+  conf.hash_seed = val;
   if (conf.hash_seed <= 0) return enif_make_badarg(env);
 
-  if (!enif_get_uint64(env, argv[6], &conf.max_gap)) return enif_make_badarg(env);
+  if (!enif_get_uint64(env, argv[6], &val)) return enif_make_badarg(env);
+  conf.max_gap = val;
 
-  cache = init_cache(conf);
+  cache = cache_init(conf);
 
   ERL_NIF_TERM term = enif_make_resource(env, cache);
   enif_release_resource(cache);
@@ -45,27 +54,31 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   ErlNifUInt64 offset;
   ErlNifBinary value;
   ErlNifBinary name_bin;
+  ErlNifBinary bucket_bin;
 
-  if (argc != 4) {
+  if (argc != 5) {
     return enif_make_badarg(env);
   };
   if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
     return enif_make_badarg(env);
   };
-  if (!enif_inspect_binary(env, argv[1], &name_bin)) {
+  if (!enif_inspect_binary(env, argv[1], &bucket_bin)) {
     return enif_make_badarg(env);
   };
-  if (!enif_get_uint64(env, argv[2], &offset)) {
+  if (!enif_inspect_binary(env, argv[2], &name_bin)) {
     return enif_make_badarg(env);
   };
-  if (!enif_inspect_binary(env, argv[3], &value)) {
+  if (!enif_get_uint64(env, argv[3], &offset)) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_inspect_binary(env, argv[4], &value)) {
     return enif_make_badarg(env);
   };
   if (value.size % sizeof(uint64_t)) {
     return enif_make_badarg(env);
   }
 
-  if ((metric = insert(cache, name_bin.data, name_bin.size, offset,
+  if ((metric = insert(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size, offset,
                        (uint64_t *) value.data, value.size / 8))) {
     ERL_NIF_TERM data;
     ERL_NIF_TERM name;
@@ -81,6 +94,70 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
                              data);
   }
   return atom_ok;
+};
+
+static ERL_NIF_TERM
+get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  dprint("get\r\n");
+  mcache_t *cache;
+  mc_metric_t *metric;
+  ErlNifBinary bucket_bin;
+  ErlNifBinary name_bin;
+  if (argc != 3) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
+    return enif_make_badarg(env);
+  };
+
+  if (!enif_inspect_binary(env, argv[1], &bucket_bin)) {
+    return enif_make_badarg(env);
+  };
+
+  if (!enif_inspect_binary(env, argv[2], &name_bin)) {
+    return enif_make_badarg(env);
+  };
+
+  if ((metric = get(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size))) {
+    return  enif_make_tuple2(env,
+                             atom_ok,
+                             metric_serialize(env, metric));
+  } else {
+    return atom_undefined;
+  }
+};
+
+static ERL_NIF_TERM
+take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  dprint("take\r\n");
+  mcache_t *cache;
+  mc_metric_t *metric;
+  ErlNifBinary bucket_bin;
+  ErlNifBinary name_bin;
+  if (argc != 3) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
+    return enif_make_badarg(env);
+  };
+
+  if (!enif_inspect_binary(env, argv[1], &bucket_bin)) {
+    return enif_make_badarg(env);
+  };
+
+  if (!enif_inspect_binary(env, argv[2], &name_bin)) {
+    return enif_make_badarg(env);
+  };
+
+  if ((metric = take(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size))) {
+    ERL_NIF_TERM res = enif_make_tuple2(env,
+                                        atom_ok,
+                                        metric_serialize(env, metric));
+    metric_free(metric);
+    return res;
+  } else {
+    return atom_undefined;
+  }
 };
 
 static ERL_NIF_TERM
@@ -112,60 +189,6 @@ pop_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   }
   return atom_undefined;
 
-};
-
-static ERL_NIF_TERM
-get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-  dprint("get\r\n");
-  mcache_t *cache;
-  mc_metric_t *metric;
-  ErlNifBinary name_bin;
-  if (argc != 2) {
-    return enif_make_badarg(env);
-  };
-  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
-    return enif_make_badarg(env);
-  };
-
-  if (!enif_inspect_binary(env, argv[1], &name_bin)) {
-    return enif_make_badarg(env);
-  };
-
-  if ((metric = get(cache, name_bin))) {
-    return  enif_make_tuple2(env,
-                             atom_ok,
-                             metric_serialize(env, metric));
-  } else {
-    return atom_undefined;
-  }
-};
-
-static ERL_NIF_TERM
-take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-  dprint("take\r\n");
-  mcache_t *cache;
-  mc_metric_t *metric;
-  ErlNifBinary name_bin;
-  if (argc != 2) {
-    return enif_make_badarg(env);
-  };
-  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
-    return enif_make_badarg(env);
-  };
-
-  if (!enif_inspect_binary(env, argv[1], &name_bin)) {
-    return enif_make_badarg(env);
-  };
-
-  if ((metric = take(cache, name_bin))) {
-    ERL_NIF_TERM res = enif_make_tuple2(env,
-                                        atom_ok,
-                                        metric_serialize(env, metric));
-    metric_free(metric);
-    return res;
-  } else {
-    return atom_undefined;
-  }
 };
 
 /* static ERL_NIF_TERM */
@@ -287,9 +310,9 @@ static ErlNifFunc nif_funcs[] = {
   {"age", 1, age_nif},
   {"pop", 1, pop_nif},
   //{"remove_prefix", 2, remove_prefix_nif},
-  {"get", 2, get_nif},
-  {"take", 2, take_nif},
-  {"insert", 4, insert_nif},
+  {"get", 3, get_nif},
+  {"take", 3, take_nif},
+  {"insert", 5, insert_nif},
 };
 
 // Initialize this NIF library.
