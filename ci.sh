@@ -5,4 +5,4 @@ unzip eqcmini-2.01.0.zip
 cd ..
 ERL_LIBS=./libs
 epmd &
-./rebar3 as eqc eqc --sname eqc
+ERL_LIBS=./libs ./rebar3 as eqc eqc --sname eqc
