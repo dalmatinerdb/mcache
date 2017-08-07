@@ -1,5 +1,6 @@
 #include "mcache.h"
 #include "mcache_metric.h"
+#include "mcache_utils.h"
 
 static void free_gen(mc_conf_t conf, mc_gen_t gen) {
   for (int b = 0; b < conf.slots; b++) {
@@ -22,7 +23,7 @@ static mc_metric_t *find_metric_g(mc_conf_t conf, mc_gen_t gen, uint64_t hash, u
     mc_metric_t *m = gen.slots[slot].subs[sub].metrics[i];
     if (m->name_len == name_len
         && m->hash == hash
-        && memcmp(m->name, name, name_len) == 0) {
+        && meq(m->name, name, name_len)) {
       return m;
     }
   }
@@ -134,7 +135,7 @@ static mc_metric_t *find_metric_and_remove_g(mc_conf_t conf, mc_gen_t *gen, uint
     mc_metric_t *m = gen->slots[slot].subs[sub].metrics[i];
     if (m->name_len == name_len
         && m->hash == hash
-        && memcmp(m->name, name, name_len) == 0) {
+        && meq(m->name, name, name_len)) {
       if (i != gen->slots[slot].subs[sub].count - 1) {
         gen->slots[slot].subs[sub].metrics[i] = gen->slots[slot].subs[sub].metrics[gen->slots[slot].subs[sub].count - 1];
       }
@@ -365,18 +366,19 @@ void bucket_age(mc_bucket_t *bucket, mc_conf_t conf) {
   // reinitialize g0
   init_slots(conf, &(bucket->g0));
 }
-mc_metric_t* bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, ErlNifBinary name, uint64_t offset, ErlNifBinary value) {
+mc_metric_t* bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, size_t name_len,
+                           uint64_t offset, uint64_t *value, size_t value_len) {
   uint64_t slot;
   mc_metric_t *metric;
 
-  uint64_t hash = XXH64(name.data, name.size, conf.hash_seed) ;
+  uint64_t hash = XXH64(name, name_len, conf.hash_seed) ;
   slot = hash % conf.slots;
-  dprint("INSERT[%llu]: %llu %lu@%llu\r\n", slot, hash, value.size / 8, offset);
+  dprint("INSERT[%llu]: %llu %lu@%llu\r\n", slot, hash, value_len, offset);
 
-  metric = bucket_get_metric(bucket, conf, hash, name.size, name.data);
+  metric = bucket_get_metric(bucket, conf, hash, name_len, name);
 
   // Add the datapoint
-  metric_add_point(conf, &(bucket->g0), metric, offset, value.size / 8, (ErlNifUInt64 *) value.data);
+  metric_add_point(conf, &(bucket->g0), metric, offset, value_len, value);
   // update largest
   insert_largest(&(bucket->g0.slots[slot]), metric);
 

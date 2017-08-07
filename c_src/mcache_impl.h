@@ -13,7 +13,7 @@ mc_metric_t *find_metric_and_remove(mcache_t *cache, uint64_t hash, uint16_t nam
 mc_metric_t* take(mcache_t *cache, ErlNifBinary name);
 mc_metric_t* get(mcache_t *cache, ErlNifBinary name);
 mc_metric_t* pop(mcache_t *cache);
-mc_metric_t* insert(mcache_t *cache, ErlNifBinary name, uint64_t offset, ErlNifBinary data);
+mc_metric_t* insert(mcache_t *cache, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len);
 void cache_free(mcache_t* c);
 
 #endif // MC_IMPL_H_INCLUDED

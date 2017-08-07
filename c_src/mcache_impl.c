@@ -30,8 +30,8 @@ mc_metric_t * check_limit(mcache_t* cache, uint64_t max_alloc, uint64_t slot) {
   return bucket_check_limit(cache->bucket, cache->conf, max_alloc, slot);
 }
 
-mc_metric_t *insert(mcache_t* cache, ErlNifBinary name, uint64_t offset, ErlNifBinary value) {
-  return bucket_insert(cache->bucket, cache->conf, name, offset, value);
+mc_metric_t *insert(mcache_t* cache, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len) {
+  return bucket_insert(cache->bucket, cache->conf, name, name_len, offset, value, value_len);
 }
 
 mc_metric_t* take(mcache_t* cache, ErlNifBinary name) {

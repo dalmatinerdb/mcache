@@ -61,11 +61,12 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (!enif_inspect_binary(env, argv[3], &value)) {
     return enif_make_badarg(env);
   };
-  if (value.size % sizeof(ErlNifUInt64) && value.size >= 8) {
+  if (value.size % sizeof(uint64_t)) {
     return enif_make_badarg(env);
   }
 
-  if ((metric = insert(cache, name_bin, offset, value))) {
+  if ((metric = insert(cache, name_bin.data, name_bin.size, offset,
+                       (uint64_t *) value.data, value.size / 8))) {
     ERL_NIF_TERM data;
     ERL_NIF_TERM name;
     unsigned char *namep;

@@ -185,6 +185,8 @@ static ERL_NIF_TERM atom_ok;
 static ERL_NIF_TERM atom_undefined;
 static ERL_NIF_TERM atom_overflow;
 
+
+
 // Print functions
 void print_cache(mcache_t *cache);
 
