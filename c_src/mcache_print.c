@@ -49,8 +49,12 @@ static void print_gen(mc_conf_t conf, mc_gen_t gen) {
   }
 }
 
-void print_bucket(mc_bucket_t *bucket) {
+static void print_bucket(mc_bucket_t *bucket) {
   print_gen(bucket->conf, bucket->g0);
   print_gen(bucket->conf, bucket->g1);
   print_gen(bucket->conf, bucket->g2);
+};
+
+void print_cache(mcache_t *cache) {
+  print_bucket(cache->bucket);
 };

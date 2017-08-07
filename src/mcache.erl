@@ -90,7 +90,8 @@ get(_Handle, _Name) ->
                            {ok, non_neg_integer()}.
 
 remove_prefix(_Handle, _Name) ->
-    erlang:nif_error(nif_library_not_loaded).
+    {ok, 0}.
+%%erlang:nif_error(nif_library_not_loaded).
 
 -spec take(mcache_handle(), key()) ->
                   undefined |

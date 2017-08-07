@@ -4,7 +4,7 @@
 
 -compile(export_all).
 
-%%-define(LOCAL, 1).
+-define(LOCAL, 1).
 
 %%====================================================================
 %% Generators & Helpers
@@ -270,30 +270,30 @@ prop_insert_pop() ->
                         R2 == undefined)
           end)).
 
-remove_prefix_body(Cache, Pfx, Gap) ->
-    {H, T, Ds} = eval(Cache),
-    mcache:remove_prefix(H, Pfx),
-    TreeKs = all_keys_t(T, Gap),
-    TreeKs1 = filter_pfx(TreeKs, Pfx, []),
-    CacheKs = all_keys_c(H, []),
-    Ds1 = check_elements(Ds),
-    {CacheKs, TreeKs, TreeKs1, T, Ds1}.
+%% remove_prefix_body(Cache, Pfx, Gap) ->
+%%     {H, T, Ds} = eval(Cache),
+%%     mcache:remove_prefix(H, Pfx),
+%%     TreeKs = all_keys_t(T, Gap),
+%%     TreeKs1 = filter_pfx(TreeKs, Pfx, []),
+%%     CacheKs = all_keys_c(H, []),
+%%     Ds1 = check_elements(Ds),
+%%     {CacheKs, TreeKs, TreeKs1, T, Ds1}.
 
-prop_remove_prefix() ->
-    ?SETUP(
-       fun setup/0,
-       ?FORALL(
-          {MaxSize, Gap, Opts, Pfx}, {c_size(), nat(), opts(), key()},
-          ?FORALL(
-             Cache, cache(MaxSize, Gap, Opts),
-             begin
-                 {CacheKs, TreeKs, TreeKs1, T, Ds1} =
-                     remote_eval(remove_prefix_body, [Cache, Pfx, Gap]),
-                 ?WHENFAIL(io:format(user, "Cache: ~p~nTree:~p / ~p~nDs: ~p~n",
-                                     [CacheKs, TreeKs, T, Ds1]),
-                           CacheKs == TreeKs1 andalso
-                           Ds1 == [])
-             end))).
+%% prop_remove_prefix() ->
+%%     ?SETUP(
+%%        fun setup/0,
+%%        ?FORALL(
+%%           {MaxSize, Gap, Opts, Pfx}, {c_size(), nat(), opts(), key()},
+%%           ?FORALL(
+%%              Cache, cache(MaxSize, Gap, Opts),
+%%              begin
+%%                  {CacheKs, TreeKs, TreeKs1, T, Ds1} =
+%%                      remote_eval(remove_prefix_body, [Cache, Pfx, Gap]),
+%%                  ?WHENFAIL(io:format(user, "Cache: ~p~nTree:~p / ~p~nDs: ~p~n",
+%%                                      [CacheKs, TreeKs, T, Ds1]),
+%%                            CacheKs == TreeKs1 andalso
+%%                            Ds1 == [])
+%%              end))).
 
 map_comp_body(Cache, MaxGap) ->
     {H, T, Ds} = eval(Cache),

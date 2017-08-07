@@ -1,6 +1,7 @@
 #include "mcache.h"
 
 static ERL_NIF_TERM conf_info(ErlNifEnv* env, mc_conf_t conf) {
+  dprint("conf_info\r\n");
   return enif_make_list5(env,
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "slots"),
@@ -21,6 +22,7 @@ static ERL_NIF_TERM conf_info(ErlNifEnv* env, mc_conf_t conf) {
 
 static ERL_NIF_TERM
 gen_stats(ErlNifEnv* env, mc_conf_t conf, mc_gen_t gen) {
+  dprint("gen_stats\r\n");
   int size = 0;
   int count = 0;
   for (int i = 0; i < conf.slots; i++) {
@@ -42,7 +44,8 @@ gen_stats(ErlNifEnv* env, mc_conf_t conf, mc_gen_t gen) {
                                           enif_make_uint64(env, size)));
 }
 
-ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket) {
+static ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket) {
+  dprint("bucket info\r\n");
   return enif_make_list7(env,
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "age"),
@@ -68,4 +71,9 @@ ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket) {
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "gen2"),
                                           gen_stats(env, bucket->conf, bucket->g2)));
+}
+
+ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache) {
+  dprint("cache info\r\n");
+  return bucket_info(env, cache->bucket);
 }

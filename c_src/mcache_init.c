@@ -30,7 +30,7 @@ void init_slots(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
 
 mc_bucket_t* init_bucket(mc_conf_t config) {
   mc_bucket_t *bucket;
-  bucket = (mc_bucket_t *) enif_alloc_resource(mc_bucket_t_handle, sizeof(mc_bucket_t));
+  bucket = mc_alloc(sizeof(mc_bucket_t));
 #ifdef TAGGED
   bucket->tag = TAG_BUCKET;
 #endif
@@ -62,4 +62,14 @@ mc_bucket_t* init_bucket(mc_conf_t config) {
   init_slots(bucket->conf, &(bucket->g2));
 
   return bucket;
+}
+
+mcache_t* init_cache(mc_conf_t config) {
+  dprint("ctor\r\n");
+
+  mcache_t *cache;
+  cache = (mcache_t *) enif_alloc_resource(mcache_t_handle, sizeof(mcache_t));
+  cache->conf = config;
+  cache->bucket = init_bucket(config);
+  return cache;
 }
