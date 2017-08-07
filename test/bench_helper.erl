@@ -44,13 +44,14 @@ bench_old(MetricCount, Data) ->
     {WritesO, WrittenO, Mem * 8 + Cnt * ?CACHE_POINTS * 8 + MetricCount * 4
      + MetricCount * 3}.
 
--define(MCOUNT, 1000).
+-define(MCOUNT, 2000).
 -define(PPM, 1000).
 -define(PPW, 1).
 
 
 make_datapoints(MetricCount, PointsPerMetric, PointsPerWrite) ->
-    Acc = make_all_points(MetricCount, 0, PointsPerMetric, PointsPerWrite, []),
+    
+    Acc = make_all_points(MetricCount, 0, PointsPerMetric div PointsPerWrite, PointsPerWrite, []),
     lists:reverse(Acc).
 
 make_all_points(_MetricCount, _PointsPerMetric, _PointsPerMetric, _PointsPerWrite, Acc) ->
@@ -89,7 +90,9 @@ old_run(MetricCount, PointsPerMetric, PointsPerWrite) ->
 points_for_time_test_() ->
     {timeout, 60,
      fun() ->
-             ok == make_datapoints(3, 2, 1)
+             io:format(user, "~p~n", [make_datapoints(10, 2, 1)]),
+             io:format(user, "~p~n", [make_datapoints(10, 2, 2)]),
+             ?assert(true)
      end}.
 
 bench_01_old_test_() ->

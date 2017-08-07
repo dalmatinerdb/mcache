@@ -114,8 +114,8 @@ typedef struct {
   #endif
   size_t alloc;
   uint8_t *name;
-  uint64_t hash;
   uint16_t name_len;
+  uint64_t hash;
   mc_entry_t *head;
   mc_entry_t *tail;
 } mc_metric_t;
@@ -169,6 +169,9 @@ typedef struct mc_bucket {
   mc_gen_t g0;
   mc_gen_t g1;
   mc_gen_t g2;
+  uint64_t hash;
+  uint8_t *name;
+  uint16_t name_len;
   struct mc_bucket *next;
 } mc_bucket_t;
 
@@ -178,7 +181,13 @@ typedef struct {
   #endif
   mc_conf_t conf;
   mc_bucket_t *bucket;
+  uint32_t bucket_count;
 } mcache_t;
+
+typedef struct {
+  mc_bucket_t *bucket;
+  mc_metric_t *metric;
+} mc_reply_t;
 
 
 ErlNifResourceType* mcache_t_handle;

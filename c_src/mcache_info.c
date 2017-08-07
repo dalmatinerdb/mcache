@@ -46,34 +46,54 @@ gen_stats(ErlNifEnv* env, mc_conf_t conf, mc_gen_t gen) {
 
 static ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket, mc_conf_t conf) {
   dprint("bucket info\r\n");
-  return enif_make_list7(env,
-                         enif_make_tuple2(env,
-                                          enif_make_atom(env, "age"),
-                                          enif_make_uint64(env, bucket->age)),
-                         enif_make_tuple2(env,
-                                          enif_make_atom(env, "inserts"),
-                                          enif_make_uint64(env, bucket->inserts)),
-                         enif_make_tuple2(env,
-                                          enif_make_atom(env, "conf"),
-                                          conf_info(env, conf)),
-                         enif_make_tuple2(env,
-                                          enif_make_atom(env, "total_alloc"),
-                                          enif_make_uint64(env,
-                                                           bucket->g0.alloc +
-                                                           bucket->g1.alloc +
-                                                           bucket->g2.alloc)),
-                         enif_make_tuple2(env,
-                                          enif_make_atom(env, "gen0"),
-                                          gen_stats(env, conf, bucket->g0)),
-                         enif_make_tuple2(env,
-                                          enif_make_atom(env, "gen1"),
-                                          gen_stats(env, conf, bucket->g1)),
-                         enif_make_tuple2(env,
-                                          enif_make_atom(env, "gen2"),
-                                          gen_stats(env, conf, bucket->g2)));
+  ERL_NIF_TERM name;
+  unsigned char *namep;
+  namep = enif_make_new_binary(env, bucket->name_len, &name);
+  memcpy(namep, bucket->name, bucket->name_len);
+
+  return enif_make_tuple2(env,
+                          name,
+                          enif_make_list6(env,
+                                          enif_make_tuple2(env,
+                                                           enif_make_atom(env, "age"),
+                                                           enif_make_uint64(env, bucket->age)),
+                                          enif_make_tuple2(env,
+                                                           enif_make_atom(env, "inserts"),
+                                                           enif_make_uint64(env, bucket->inserts)),
+                                          enif_make_tuple2(env,
+                                                           enif_make_atom(env, "total_alloc"),
+                                                           enif_make_uint64(env,
+                                                                            bucket->g0.alloc +
+                                                                            bucket->g1.alloc +
+                                                                            bucket->g2.alloc)),
+                                          enif_make_tuple2(env,
+                                                           enif_make_atom(env, "gen0"),
+                                                           gen_stats(env, conf, bucket->g0)),
+                                          enif_make_tuple2(env,
+                                                           enif_make_atom(env, "gen1"),
+                                                           gen_stats(env, conf, bucket->g1)),
+                                          enif_make_tuple2(env,
+                                                           enif_make_atom(env, "gen2"),
+                                                           gen_stats(env, conf, bucket->g2))));
 }
 
 ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache) {
   dprint("cache info\r\n");
-  return bucket_info(env, cache->bucket, cache->conf);
+  ERL_NIF_TERM conf = enif_make_tuple2(env,
+                                       enif_make_atom(env, "conf"),
+                                       conf_info(env, cache->conf));
+
+  ERL_NIF_TERM buckets = enif_make_list(env, 0);
+
+  mc_bucket_t *bucket = cache->bucket;
+  while(bucket) {
+    buckets = enif_make_list_cell(env, bucket_info(env, bucket, cache->conf), buckets);
+    bucket = bucket->next;
+  };
+  //bucket_info(env, cache->bucket, cache->conf)
+  return enif_make_list2(env,
+                         conf,
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "buckets"),
+                                          buckets));
 }

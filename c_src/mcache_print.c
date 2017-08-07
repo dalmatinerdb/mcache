@@ -56,5 +56,9 @@ static void print_bucket(mc_bucket_t *bucket, mc_conf_t conf) {
 };
 
 void print_cache(mcache_t *cache) {
-  print_bucket(cache->bucket, cache->conf);
+  mc_bucket_t* bucket = cache->bucket;
+  while (bucket) {
+    print_bucket(bucket, cache->conf);
+    bucket = bucket->next;
+  }
 };

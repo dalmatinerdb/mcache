@@ -32,6 +32,7 @@ static void init_slots(mc_conf_t conf,/*@out@*/ mc_gen_t *gen) {
 }
 
 static void free_gen(mc_conf_t conf, mc_gen_t gen) {
+  dprint("free_gen\r\n");
   for (int b = 0; b < conf.slots; b++) {
     for (int s = 0; s < SUBS; s++) {
       for (int m = 0; m < gen.slots[b].subs[s].count; m++) {
@@ -422,20 +423,26 @@ mc_metric_t* bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, s
 
 }
 
-void bucket_free(mc_bucket_t *bucket, mc_conf_t conf) {
+mc_bucket_t *bucket_free(mc_bucket_t *bucket, mc_conf_t conf) {
+  dprint("bucket_free\r\n");
+  mc_bucket_t *next = bucket->next;
   free_gen(conf, bucket->g0);
   free_gen(conf, bucket->g1);
   free_gen(conf, bucket->g2);
+  mc_free(bucket->name);
   mc_free(bucket);
+  return next;
 }
 
 uint8_t bucket_is_empty(mc_bucket_t *bucket) {
   return bucket->g0.alloc == 0 && bucket->g1.alloc == 0 && bucket->g2.alloc == 0;
 };
 
-mc_bucket_t* bucket_init(mc_conf_t config) {
+mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
+  dprint("bucket_init\r\n");
   mc_bucket_t *bucket;
   bucket = mc_alloc(sizeof(mc_bucket_t));
+
 #ifdef TAGGED
   bucket->tag = TAG_BUCKET;
 #endif
@@ -444,20 +451,28 @@ mc_bucket_t* bucket_init(mc_conf_t config) {
   bucket->inserts = 0;
   bucket->age = 0;
 
+  bucket->next = NULL;
+
+  bucket->name_len = name_len;
+  bucket->name = mc_alloc(name_len * sizeof(uint8_t));
+  memcpy(bucket->name, name, name_len);
+  bucket->hash = XXH64(name, name_len, config.hash_seed);
+
   //now set up the tree genreations
   bucket->g0.v = 0;
   bucket->g0.alloc = 0;
 #ifdef TAGGED
   bucket->g0.tag = TAG_GEN;
 #endif
-
   init_slots(config, &(bucket->g0));
+
   bucket->g1.v = 1;
   bucket->g1.alloc = 0;
 #ifdef TAGGED
   bucket->g1.tag = TAG_GEN;
 #endif
   init_slots(config, &(bucket->g1));
+
   bucket->g2.v = 2;
   bucket->g2.alloc = 0;
 #ifdef TAGGED

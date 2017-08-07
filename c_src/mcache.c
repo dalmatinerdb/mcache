@@ -50,7 +50,6 @@ static ERL_NIF_TERM
 insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   dprint("insert\r\n");
   mcache_t *cache;
-  mc_metric_t *metric;
   ErlNifUInt64 offset;
   ErlNifBinary value;
   ErlNifBinary name_bin;
@@ -77,17 +76,12 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (value.size % sizeof(uint64_t)) {
     return enif_make_badarg(env);
   }
-
-  if ((metric = insert(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size, offset,
-                       (uint64_t *) value.data, value.size / 8))) {
-    ERL_NIF_TERM data;
-    ERL_NIF_TERM name;
-    unsigned char *namep;
-
-    data = metric_serialize(env, metric);
-    namep = enif_make_new_binary(env, metric->name_len, &name);
-    memcpy(namep, metric->name, metric->name_len);
-    metric_free(metric);
+  mc_reply_t reply = insert(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size, offset,
+                            (uint64_t *) value.data, value.size / 8);
+  if (reply.metric) {
+    ERL_NIF_TERM name = serialize_reply_name(env, reply);
+    ERL_NIF_TERM data = metric_serialize(env, reply.metric);
+    metric_free(reply.metric);
     return  enif_make_tuple3(env,
                              atom_overflow,
                              name,
@@ -100,7 +94,6 @@ static ERL_NIF_TERM
 get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   dprint("get\r\n");
   mcache_t *cache;
-  mc_metric_t *metric;
   ErlNifBinary bucket_bin;
   ErlNifBinary name_bin;
   if (argc != 3) {
@@ -117,11 +110,11 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (!enif_inspect_binary(env, argv[2], &name_bin)) {
     return enif_make_badarg(env);
   };
-
-  if ((metric = get(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size))) {
+  mc_reply_t reply = get(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size);
+  if (reply.metric) {
     return  enif_make_tuple2(env,
                              atom_ok,
-                             metric_serialize(env, metric));
+                             metric_serialize(env, reply.metric));
   } else {
     return atom_undefined;
   }
@@ -131,7 +124,6 @@ static ERL_NIF_TERM
 take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   dprint("take\r\n");
   mcache_t *cache;
-  mc_metric_t *metric;
   ErlNifBinary bucket_bin;
   ErlNifBinary name_bin;
   if (argc != 3) {
@@ -148,12 +140,12 @@ take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (!enif_inspect_binary(env, argv[2], &name_bin)) {
     return enif_make_badarg(env);
   };
-
-  if ((metric = take(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size))) {
+  mc_reply_t reply = take(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size);
+  if (reply.metric) {
     ERL_NIF_TERM res = enif_make_tuple2(env,
                                         atom_ok,
-                                        metric_serialize(env, metric));
-    metric_free(metric);
+                                        metric_serialize(env, reply.metric));
+    metric_free(reply.metric);
     return res;
   } else {
     return atom_undefined;
@@ -164,10 +156,6 @@ static ERL_NIF_TERM
 pop_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   dprint("pop\r\n");
   mcache_t *cache;
-  mc_metric_t *metric = NULL;
-  ERL_NIF_TERM data;
-  ERL_NIF_TERM name;
-  unsigned char *namep;
 
   if (argc != 1) {
     return enif_make_badarg(env);
@@ -177,11 +165,11 @@ pop_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   };
 
   // We cheat here, we can create a 'pop' by just checkig for a 0 limit.
-  if ((metric = pop(cache))) {
-    data = metric_serialize(env, metric);
-    namep = enif_make_new_binary(env, metric->name_len, &name);
-    memcpy(namep, metric->name, metric->name_len);
-    metric_free(metric);
+  mc_reply_t reply = pop(cache);
+  if (reply.metric) {
+    ERL_NIF_TERM data = metric_serialize(env, reply.metric);
+    ERL_NIF_TERM name = serialize_reply_name(env, reply);
+    metric_free(reply.metric);
     return  enif_make_tuple3(env,
                              atom_ok,
                              name,
