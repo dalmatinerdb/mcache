@@ -64,8 +64,8 @@
 
 // defining alloc and free functions so we can easiely switch between them
 /*
-#define mc_alloc(size) malloc(size)
-#define mc_free(ptr) free(ptr)
+  #define mc_alloc(size) malloc(size)
+  #define mc_free(ptr) free(ptr)
 */
 
 #define mc_alloc(size) enif_alloc(size)
@@ -164,7 +164,6 @@ typedef struct {
   #ifdef TAGGED
   uint32_t tag;
   #endif
-  mc_conf_t conf;
   uint32_t inserts;
   uint32_t age;
   mc_gen_t g0;
@@ -173,6 +172,9 @@ typedef struct {
 } mc_bucket_t;
 
 typedef struct {
+  #ifdef TAGGED
+  uint32_t tag;
+  #endif
   mc_conf_t conf;
   mc_bucket_t *bucket;
 } mcache_t;

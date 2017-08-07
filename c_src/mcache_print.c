@@ -30,7 +30,7 @@ static void print_metric(mc_metric_t *metric) {
   print_entry(metric->head);
 }
 
-static void print_gen(mc_conf_t conf, mc_gen_t gen) {
+static void print_gen(mc_gen_t gen, mc_conf_t conf) {
   int size = 0;
   int count = 0;
   for (int i = 0; i < conf.slots; i++) {
@@ -49,12 +49,12 @@ static void print_gen(mc_conf_t conf, mc_gen_t gen) {
   }
 }
 
-static void print_bucket(mc_bucket_t *bucket) {
-  print_gen(bucket->conf, bucket->g0);
-  print_gen(bucket->conf, bucket->g1);
-  print_gen(bucket->conf, bucket->g2);
+static void print_bucket(mc_bucket_t *bucket, mc_conf_t conf) {
+  print_gen(bucket->g0, conf);
+  print_gen(bucket->g1, conf);
+  print_gen(bucket->g2, conf);
 };
 
 void print_cache(mcache_t *cache) {
-  print_bucket(cache->bucket);
+  print_bucket(cache->bucket, cache->conf);
 };

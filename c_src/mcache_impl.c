@@ -2,11 +2,11 @@
 #include "mcache_bucket.h"
 
 void cache_free(mcache_t *cache) {
-  bucket_free(cache->bucket);
+  bucket_free(cache->bucket, cache->conf);
 }
 
 void age(mcache_t* cache) {
-  bucket_age(cache->bucket);
+  bucket_age(cache->bucket, cache->conf);
 }
 
 void is_empty(mcache_t* cache) {
@@ -14,24 +14,24 @@ void is_empty(mcache_t* cache) {
 }
 
 mc_metric_t* find_metric(mcache_t* cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
-  return bucket_find_metric(cache->bucket, hash, name_len, name);
+  return bucket_find_metric(cache->bucket, cache->conf, hash, name_len, name);
 }
 
 mc_metric_t* find_metric_and_remove(mcache_t* cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
-  return bucket_find_metric_and_remove(cache->bucket, hash, name_len, name);
+  return bucket_find_metric_and_remove(cache->bucket, cache->conf, hash, name_len, name);
 }
 
 mc_metric_t *get_metric(mcache_t* cache, uint64_t hash, uint16_t name_len, uint8_t *name) {
-  return bucket_get_metric(cache->bucket, hash, name_len, name);
+  return bucket_get_metric(cache->bucket, cache->conf, hash, name_len, name);
 }
 
 
 mc_metric_t * check_limit(mcache_t* cache, uint64_t max_alloc, uint64_t slot) {
-  return bucket_check_limit(cache->bucket, max_alloc, slot);
+  return bucket_check_limit(cache->bucket, cache->conf, max_alloc, slot);
 }
 
 mc_metric_t *insert(mcache_t* cache, ErlNifBinary name, uint64_t offset, ErlNifBinary value) {
-  return bucket_insert(cache->bucket, name, offset, value);
+  return bucket_insert(cache->bucket, cache->conf, name, offset, value);
 }
 
 mc_metric_t* take(mcache_t* cache, ErlNifBinary name) {

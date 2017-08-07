@@ -44,7 +44,7 @@ gen_stats(ErlNifEnv* env, mc_conf_t conf, mc_gen_t gen) {
                                           enif_make_uint64(env, size)));
 }
 
-static ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket) {
+static ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket, mc_conf_t conf) {
   dprint("bucket info\r\n");
   return enif_make_list7(env,
                          enif_make_tuple2(env,
@@ -55,7 +55,7 @@ static ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket) {
                                           enif_make_uint64(env, bucket->inserts)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "conf"),
-                                          conf_info(env, bucket->conf)),
+                                          conf_info(env, conf)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "total_alloc"),
                                           enif_make_uint64(env,
@@ -64,16 +64,16 @@ static ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket) {
                                                            bucket->g2.alloc)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "gen0"),
-                                          gen_stats(env, bucket->conf, bucket->g0)),
+                                          gen_stats(env, conf, bucket->g0)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "gen1"),
-                                          gen_stats(env, bucket->conf, bucket->g1)),
+                                          gen_stats(env, conf, bucket->g1)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "gen2"),
-                                          gen_stats(env, bucket->conf, bucket->g2)));
+                                          gen_stats(env, conf, bucket->g2)));
 }
 
 ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache) {
   dprint("cache info\r\n");
-  return bucket_info(env, cache->bucket);
+  return bucket_info(env, cache->bucket, cache->conf);
 }

@@ -35,7 +35,6 @@ mc_bucket_t* init_bucket(mc_conf_t config) {
   bucket->tag = TAG_BUCKET;
 #endif
 
-  bucket->conf = config;
   // some bucket wqide counters
   bucket->inserts = 0;
   bucket->age = 0;
@@ -47,19 +46,19 @@ mc_bucket_t* init_bucket(mc_conf_t config) {
   bucket->g0.tag = TAG_GEN;
 #endif
 
-  init_slots(bucket->conf, &(bucket->g0));
+  init_slots(config, &(bucket->g0));
   bucket->g1.v = 1;
   bucket->g1.alloc = 0;
 #ifdef TAGGED
   bucket->g1.tag = TAG_GEN;
 #endif
-  init_slots(bucket->conf, &(bucket->g1));
+  init_slots(config, &(bucket->g1));
   bucket->g2.v = 2;
   bucket->g2.alloc = 0;
 #ifdef TAGGED
   bucket->g2.tag = TAG_GEN;
 #endif
-  init_slots(bucket->conf, &(bucket->g2));
+  init_slots(config, &(bucket->g2));
 
   return bucket;
 }
@@ -69,6 +68,9 @@ mcache_t* init_cache(mc_conf_t config) {
 
   mcache_t *cache;
   cache = (mcache_t *) enif_alloc_resource(mcache_t_handle, sizeof(mcache_t));
+#ifdef TAGGED
+  cache->tag = TAG_CACHE;
+#endif
   cache->conf = config;
   cache->bucket = init_bucket(config);
   return cache;
