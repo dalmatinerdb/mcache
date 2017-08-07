@@ -423,15 +423,13 @@ mc_metric_t* bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, s
 
 }
 
-mc_bucket_t *bucket_free(mc_bucket_t *bucket, mc_conf_t conf) {
+void bucket_free(mc_bucket_t *bucket, mc_conf_t conf) {
   dprint("bucket_free\r\n");
-  mc_bucket_t *next = bucket->next;
   free_gen(conf, bucket->g0);
   free_gen(conf, bucket->g1);
   free_gen(conf, bucket->g2);
   mc_free(bucket->name);
   mc_free(bucket);
-  return next;
 }
 
 uint8_t bucket_is_empty(mc_bucket_t *bucket) {
@@ -450,8 +448,6 @@ mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
   // some bucket wqide counters
   bucket->inserts = 0;
   bucket->age = 0;
-
-  bucket->next = NULL;
 
   bucket->name_len = name_len;
   bucket->name = mc_alloc(name_len * sizeof(uint8_t));

@@ -4,7 +4,7 @@
 
 -compile(export_all).
 
--define(LOCAL, 1).
+%%-define(LOCAL, 1).
 
 %%====================================================================
 %% Generators & Helpers
@@ -255,7 +255,7 @@ insert_pop_body(S, B, K, T, V) ->
     R1 = case mcache:insert(H, B, K, T, V) of
              {overflow, BM ,Vs} ->
                  {ok, BM, Vs};
-             O ->
+             _O ->
                  mcache:pop(H)
          end,
     R2 = mcache:pop(H),

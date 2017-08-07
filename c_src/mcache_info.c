@@ -85,10 +85,9 @@ ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache) {
 
   ERL_NIF_TERM buckets = enif_make_list(env, 0);
 
-  mc_bucket_t *bucket = cache->bucket;
-  while(bucket) {
+  for (uint32_t b = 0; b < cache->bucket_count; b++) {
+    mc_bucket_t* bucket = cache->buckets[b];
     buckets = enif_make_list_cell(env, bucket_info(env, bucket, cache->conf), buckets);
-    bucket = bucket->next;
   };
   //bucket_info(env, cache->bucket, cache->conf)
   return enif_make_list2(env,

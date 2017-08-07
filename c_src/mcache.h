@@ -173,16 +173,17 @@ typedef struct mc_bucket {
   uint64_t hash;
   uint8_t *name;
   uint16_t name_len;
-  struct mc_bucket *next;
 } mc_bucket_t;
 
+#define BKT_GROWTH 20;
 typedef struct {
   #ifdef TAGGED
   uint32_t tag;
   #endif
   mc_conf_t conf;
-  mc_bucket_t *bucket;
   uint32_t bucket_count;
+  uint32_t bucket_size;
+  mc_bucket_t **buckets;
 } mcache_t;
 
 typedef struct {
