@@ -6,3 +6,4 @@ cd ..
 epmd &
 export ERL_LIBS=./libs 
 ./rebar3 as travis eqc
+./rebar3 dialyzer
