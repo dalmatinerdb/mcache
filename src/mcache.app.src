@@ -8,6 +8,7 @@
    ]},
   {env,[]},
   {modules, []},
+  {exclude_regexps, ["\\.d$"]},
 
   {maintainers, ["Heinz N. Gies"]},
   {licenses, ["BSD"]},
