@@ -9,6 +9,25 @@ static mc_bucket_t* find_bucket(mcache_t* cache, uint8_t *name, size_t name_len)
     if (bucket->name_len == name_len
         && bucket->hash == hash
         && meq(bucket->name, name, name_len)) {
+      // When we found our bucket we see if it is accessed more frequetly
+      // then the bucket before it, if it is we let it tickle forward so it
+      // is found quicker in the foture. This of cause only makes sense if we
+      // are not at the first bucket anyway.
+      if (b > 0) {
+        mc_bucket_t* last = cache->buckets[b];
+        // if this bucket has more writes then the previous one we flip it
+        if (
+            // If this bucket has aged more
+            last->age < bucket->age ||
+            // or if they have aged the saame but it has more inserts with a margin
+            // of 42, because there had to be a number to be picked this is to prevent
+            // too much flapping
+            (last->age  == bucket->age && (bucket->inserts - last->inserts) > 42)) {
+          // We switch them around
+          cache->buckets[b] = last;
+          cache->buckets[b - 1] = bucket;
+        }
+      }
       return bucket;
     }
   }
@@ -61,7 +80,7 @@ uint8_t is_empty(mcache_t* cache) {
 }
 
 
-static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc, uint64_t slot) {
+static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   dprint("check limit\r\n");
   mc_reply_t reply = {NULL, NULL};
   if (size(cache) < max_alloc || !cache->bucket_count) {
@@ -71,16 +90,29 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc, uint64_t slot
   dprint("check limit: 2\r\n");
   uint64_t bucket_quota = max_alloc / cache->bucket_count;
   dprint("check limit: 3 [cache->bucket_count] %ul\r\n", cache->bucket_count);
-  for (uint32_t b = 0; b < cache->bucket_count; b++) {
-    dprint("check limit: 4 [b]: %ul\r\n", b);
+  // we traverse bacwards as the least accessed item is supposed to be
+  // at the end
+  for (int64_t b = cache->bucket_count - 1; b >= 0; b--) {
+    dprint("check limit: 4 [b]: %lld\r\n", b);
     reply.bucket = cache->buckets[b];
-    reply.metric = bucket_check_limit(reply.bucket, cache->conf, bucket_quota, slot);
+    // if we are the last bucket and are emtpy we free ourselfs and continue
+    // down the road.
+    // This way unused buckes, over time, will be freed.
+    if (b == cache->bucket_count - 1 && bucket_is_empty(reply.bucket)) {
+      dprint("This is the last bucket and it's empty, bye.\r\n");
+      bucket_free(reply.bucket, cache->conf);
+      reply.bucket = NULL;
+      cache->buckets[b] = NULL;
+      cache->bucket_count--;
+      continue;
+    }
+    reply.metric = bucket_check_limit(reply.bucket, cache->conf, bucket_quota);
     if (reply.metric) {
-      dprint("check limit: 5\r\n");
+      dprint("check limit: found a metric\r\n");
       return reply;
     }
   }
-  dprint("check limit: 6\r\n");
+  dprint("check limit: found nothing\r\n");
   return reply;
 }
 
@@ -100,8 +132,10 @@ mc_reply_t insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, 
     cache->buckets[cache->bucket_count] = reply.bucket;
     cache->bucket_count++;
   }
-  reply.metric = bucket_insert(reply.bucket, cache->conf, name, name_len, offset, value, value_len);
-  return reply;
+  bucket_insert(reply.bucket, cache->conf, name, name_len, offset, value, value_len);
+  return check_limit(cache, cache->conf.max_alloc);
+  
+  
 }
 
 mc_reply_t take(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len) {
@@ -129,7 +163,7 @@ mc_reply_t get(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, siz
 }
 
 mc_reply_t pop(mcache_t* cache) {
-  return check_limit(cache, 0, 0);
+  return check_limit(cache, 0);
 }
 
 mcache_t* cache_init(mc_conf_t config) {
@@ -174,7 +208,7 @@ ERL_NIF_TERM serialize_reply_name(ErlNifEnv* env, mc_reply_t reply) {
 
 /*
   f().
-  H = mcache:new(0, [{max_gap,0}, {buckets,1}, {age_cycle,1}, {initial_data_size,1}, {initial_entries,1}, {hash_seed,1}]).
+  H = mcache:new(200, [{max_gap,0}, {buckets,1}, {age_cycle,1}, {initial_data_size,1}, {initial_entries,1}, {hash_seed,1}]).
   mcache:insert(H, <<"a">>, <<>>, 0, <<0,0,0,0,0,0,0,0>>).
   mcache:insert(H, <<"b">>, <<>>, 0, <<0,0,0,0,0,0,0,0>>).
   mcache:pop(H).

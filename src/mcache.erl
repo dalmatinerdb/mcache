@@ -68,14 +68,14 @@ new(MaxAlloc, Opts) ->
         HashSeed, MaxGap).
 -spec pop(mcache_handle()) ->
                  undefined |
-                 {ok, key(), chunks()}.
+                 {ok, {bucket(), key()}, chunks()}.
 
 pop(_Handle) ->
     erlang:nif_error(nif_library_not_loaded).
 
 -spec insert(mcache_handle(), bucket(), key(), offset(), values()) ->
                     ok |
-                    {overflow, key(), chunks()}.
+                    {overflow, {bucket(), key()}, chunks()}.
 insert(_Handle, _Bucket, _Name, _Offset, _Value) ->
     erlang:nif_error(nif_library_not_loaded).
 

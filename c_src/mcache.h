@@ -165,7 +165,7 @@ typedef struct mc_bucket {
   #ifdef TAGGED
   uint32_t tag;
   #endif
-  uint32_t inserts;
+  uint64_t inserts;
   uint32_t age;
   mc_gen_t g0;
   mc_gen_t g1;

@@ -230,7 +230,7 @@ mc_metric_t *bucket_get_metric(mc_bucket_t *bucket, mc_conf_t conf, uint64_t has
   return metric;
 };
 
-mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t max_alloc, uint64_t slot) {
+mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t max_alloc) {
   if (max_alloc > bucket->g0.alloc +
       bucket->g1.alloc +
       bucket->g2.alloc) {
@@ -263,7 +263,7 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
   mc_metric_t *metric = NULL;
   mc_sub_slot_t *largest_sub =  NULL;
   mc_slot_t *largest_slot =  NULL;
-  int largest_idx = 0;
+  int metric_idx = 0;
   // try to find a metric using the largest bucket first
   for (int b = 0; b < conf.slots; b++) {
     if (gen->slots[b].largest[0] &&
@@ -274,23 +274,23 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
     }
   }
   if (metric) {
-    largest_idx = 0;
+    metric_idx = 0;
     remove_largest(largest_slot, metric);
     // find the index of the metric
-    while (largest_idx < largest_sub->count && largest_sub->metrics[largest_idx] != metric) {
-      largest_idx++;
+    while (metric_idx < largest_sub->count && largest_sub->metrics[metric_idx] != metric) {
+      metric_idx++;
     }
     // We didn't found anything that is problematic so we pretend it never
     // happend, the metric is already removed from the largest index
-    if (largest_idx == largest_sub->count) {
+    if (metric_idx == largest_sub->count) {
       dprint("Oh my\r\n");
-      largest_idx = 0;
+      metric_idx = 0;
       metric = NULL;
       largest_slot = NULL;
       largest_sub = NULL;
     }
   }
-  for (int i = 0; i < conf.slots; i++) {
+  for (int slot_id = 0; slot_id < conf.slots; slot_id++) {
     // we break if we found a sutiable metric either in this loop or the loop before
     if (metric) {
       break;
@@ -298,14 +298,13 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
 
     // We itterate through all slots starting after the slot we just edited
     // that way we avoid always changing the same buket over and over
-    int b = (i + slot + 1) % conf.slots;
-    mc_slot_t *slot = &(gen->slots[b]);
+    mc_slot_t *slot = &(gen->slots[slot_id]);
     for (int sub = 0; sub < SUBS; sub++) {
       // If we found a non empty slot we find the largest metric in there to
       // evict, that way we can can free up the 'most sensible' thing;
       for (int j = 0; j < slot->subs[sub].count; j++) {
         if (!metric || slot->subs[sub].metrics[j]->alloc >= metric->alloc) {
-          largest_idx = j;
+          metric_idx = j;
           largest_sub = &(slot->subs[sub]);
           metric = largest_sub->metrics[j];
         }
@@ -313,15 +312,12 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
     }
 
   }
-  if (metric) {
-    if (largest_idx != largest_sub->count - 1) {
-      largest_sub->metrics[largest_idx] = largest_sub->metrics[largest_sub->count - 1];
-    }
-    largest_sub->count--;
-    gen->alloc -= metric->alloc;
-    return metric;
+  if (metric_idx != largest_sub->count - 1) {
+    largest_sub->metrics[metric_idx] = largest_sub->metrics[largest_sub->count - 1];
   }
-  return NULL;
+  largest_sub->count--;
+  gen->alloc -= metric->alloc;
+  return metric;
   // now we work on exporting the metric
 }
 
@@ -396,8 +392,8 @@ void bucket_age(mc_bucket_t *bucket, mc_conf_t conf) {
   // reinitialize g0
   init_slots(conf, &(bucket->g0));
 }
-mc_metric_t* bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, size_t name_len,
-                           uint64_t offset, uint64_t *value, size_t value_len) {
+void bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, size_t name_len,
+                   uint64_t offset, uint64_t *value, size_t value_len) {
   uint64_t slot;
   mc_metric_t *metric;
 
@@ -418,9 +414,6 @@ mc_metric_t* bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, s
     bucket->age++;
     bucket->inserts = 0;
   }
-  // We now check for overflow note that metric is re-used here!
-  return bucket_check_limit(bucket, conf, conf.max_alloc, slot);
-
 }
 
 void bucket_free(mc_bucket_t *bucket, mc_conf_t conf) {
