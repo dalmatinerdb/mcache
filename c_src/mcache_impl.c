@@ -15,6 +15,23 @@ static mc_bucket_t* find_bucket(mcache_t* cache, uint8_t *name, size_t name_len)
   return NULL;
 }
 
+void remove_bucket(mcache_t* cache, uint8_t *name, size_t name_len) {
+  uint64_t hash = XXH64(name, name_len, cache->conf.hash_seed);
+  for (uint32_t b = 0; b < cache->bucket_count; b++) {
+    mc_bucket_t* bucket = cache->buckets[b];
+    if (bucket->name_len == name_len
+        && bucket->hash == hash
+        && meq(bucket->name, name, name_len)) {
+      // free the bucket
+      bucket_free(bucket, cache->conf);
+      // replace it with the last one
+      cache->bucket_count--;
+      cache->buckets[b] = cache->buckets[cache->bucket_count];
+      return;
+    }
+  }
+}
+
 uint64_t size(mcache_t* cache) {
   uint64_t alloc = 0;
   for (uint32_t b = 0; b < cache->bucket_count; b++) {

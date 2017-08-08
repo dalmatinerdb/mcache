@@ -275,30 +275,30 @@ prop_insert_pop() ->
                         R2 == undefined)
           end)).
 
-%% remove_bucket_body(Cache, Bucket, Gap) ->
-%%     {H, T, Ds} = eval(Cache),
-%%     mcache:remove_bucket(H, Bucket),
-%%     TreeKs = all_keys_t(T, Gap),
-%%     TreeKs1 = filter_bucket(TreeKs, Bucket, []),
-%%     CacheKs = all_keys_c(H, []),
-%%     Ds1 = check_elements(Ds),
-%%     {CacheKs, TreeKs, TreeKs1, T, Ds1}.
+remove_bucket_body(Cache, Bucket, Gap) ->
+    {H, T, Ds} = eval(Cache),
+    mcache:remove_bucket(H, Bucket),
+    TreeKs = all_keys_t(T, Gap),
+    TreeKs1 = filter_bucket(TreeKs, Bucket, []),
+    CacheKs = all_keys_c(H, []),
+    Ds1 = check_elements(Ds),
+    {CacheKs, TreeKs, TreeKs1, T, Ds1}.
 
-%% prop_remove_bucket() ->
-%%     ?SETUP(
-%%        fun setup/0,
-%%        ?FORALL(
-%%           {MaxSize, Gap, Opts, Bkt}, {c_size(), nat(), opts(), bucket()},
-%%           ?FORALL(
-%%              Cache, cache(MaxSize, Gap, Opts),
-%%              begin
-%%                  {CacheKs, TreeKs, TreeKs1, T, Ds1} =
-%%                      remote_eval(remove_bucket_body, [Cache, Bkt, Gap]),
-%%                  ?WHENFAIL(io:format(user, "Cache: ~p~nTree:~p / ~p~nDs: ~p~n",
-%%                                      [CacheKs, TreeKs, T, Ds1]),
-%%                            CacheKs == TreeKs1 andalso
-%%                            Ds1 == [])
-%%              end))).
+prop_remove_bucket() ->
+    ?SETUP(
+       fun setup/0,
+       ?FORALL(
+          {MaxSize, Gap, Opts, Bkt}, {c_size(), nat(), opts(), bucket()},
+          ?FORALL(
+             Cache, cache(MaxSize, Gap, Opts),
+             begin
+                 {CacheKs, TreeKs, TreeKs1, T, Ds1} =
+                     remote_eval(remove_bucket_body, [Cache, Bkt, Gap]),
+                 ?WHENFAIL(io:format(user, "Cache: ~p~nTree:~p / ~p~nDs: ~p~n",
+                                     [CacheKs, TreeKs, T, Ds1]),
+                           CacheKs == TreeKs1 andalso
+                           Ds1 == [])
+             end))).
 
 map_comp_body(Cache, MaxGap) ->
     {H, T, Ds} = eval(Cache),

@@ -179,26 +179,24 @@ pop_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
 };
 
-/* static ERL_NIF_TERM */
-/* remove_prefix_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { */
-/*   mcache_t *cache; */
-/*   ErlNifBinary pfx_bin; */
-/*   if (argc != 2) { */
-/*     return enif_make_badarg(env); */
-/*   }; */
-/*   if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) { */
-/*     return enif_make_badarg(env); */
-/*   }; */
+static ERL_NIF_TERM
+remove_bucket_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  mcache_t *cache;
+  ErlNifBinary bucket_bin;
+  if (argc != 2) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
+    return enif_make_badarg(env);
+  };
 
-/*   if (!enif_inspect_binary(env, argv[1], &pfx_bin)) { */
-/*     return enif_make_badarg(env); */
-/*   }; */
+  if (!enif_inspect_binary(env, argv[1], &bucket_bin)) {
+    return enif_make_badarg(env);
+  };
 
-/*   uint64_t count = remove_prefix(cache, pfx_bin.size, pfx_bin.data); */
-/*   return  enif_make_tuple2(env, */
-/*                            atom_ok, */
-/*                            enif_make_uint64(env, count)); */
-/* }; */
+  remove_bucket(cache, bucket_bin.data, bucket_bin.size);
+  return  atom_ok;
+};
 
 static ERL_NIF_TERM
 print_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
@@ -297,7 +295,7 @@ static ErlNifFunc nif_funcs[] = {
   {"is_empty", 1, is_empty_nif},
   {"age", 1, age_nif},
   {"pop", 1, pop_nif},
-  //{"remove_prefix", 2, remove_prefix_nif},
+  {"remove_bucket", 2, remove_bucket_nif},
   {"get", 3, get_nif},
   {"take", 3, take_nif},
   {"insert", 5, insert_nif},

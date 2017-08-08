@@ -4,7 +4,7 @@
 
 %% API exports
 -export([new/2, pop/1, insert/5, print/1, stats/1, get/3, age/1,
-         take/3 , is_empty/1, remove_prefix/2
+         take/3 , is_empty/1, remove_bucket/2
         ]).
 
 -type mcache_handle() :: binary().
@@ -86,13 +86,12 @@ insert(_Handle, _Bucket, _Name, _Offset, _Value) ->
 get(_Handle, _Bucket, _Name) ->
     erlang:nif_error(nif_library_not_loaded).
 
--spec remove_prefix(mcache_handle(), key()) ->
+-spec remove_bucket(mcache_handle(), bucket()) ->
                            undefined |
                            {ok, non_neg_integer()}.
 
-remove_prefix(_Handle, _Name) ->
-    {ok, 0}.
-%%erlang:nif_error(nif_library_not_loaded).
+remove_bucket(_Handle, _Bucket) ->
+    erlang:nif_error(nif_library_not_loaded).
 
 -spec take(mcache_handle(), bucket(), key()) ->
                   undefined |
