@@ -5,4 +5,4 @@ unzip eqcmini-2.01.0.zip
 cd ..
 epmd &
 export ERL_LIBS=./libs 
-./rebar3 as eqc eqc --sname eqc
+./rebar3 as travis eqc
