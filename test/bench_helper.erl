@@ -44,13 +44,10 @@ bench_old(MetricCount, Data) ->
     {WritesO, WrittenO, Mem * 8 + Cnt * ?CACHE_POINTS * 8 + MetricCount * 4
      + MetricCount * 3}.
 
--define(MCOUNT, 2000).
+-define(MCOUNT, 5000).
 -define(PPM, 1000).
--define(PPW, 1).
-
 
 make_datapoints(MetricCount, PointsPerMetric, PointsPerWrite) ->
-    
     Acc = make_all_points(MetricCount, 0, PointsPerMetric div PointsPerWrite, PointsPerWrite, []),
     lists:reverse(Acc).
 
@@ -129,6 +126,3 @@ bench_11_new_test_() ->
                end, [1, 10, 100]),
              ?assert(true)
      end}.
-
-%%43720
-%%54000
