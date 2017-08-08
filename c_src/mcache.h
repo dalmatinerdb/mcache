@@ -1,10 +1,16 @@
 #ifndef MC_H_INCLUDED
 #define MC_H_INCLUDED
 
+//#define DEBUG
+
+#include "erl_nif.h"
+#include <string.h>
+#include "stdio.h"
+#include "xxhash.h"
+#include <stdint.h>
 
 #define SUBS 64
 #define LCOUNT 10
-#include <stdint.h>
 
 /*
  ┌────────────┐
@@ -57,8 +63,14 @@
 
 
 // defining alloc and free functions so we can easiely switch between them
+#define EALLOC // use erlangallocator
+#ifndef EALLOC
 #define mc_alloc(size) malloc(size)
 #define mc_free(ptr) free(ptr)
+#else
+#define mc_alloc(size) enif_alloc(size)
+#define mc_free(ptr) enif_free(ptr)
+#endif
 
 #define subid(x) (x >> 56) % SUBS
 
@@ -103,8 +115,8 @@ typedef struct {
   #endif
   size_t alloc;
   uint8_t *name;
-  uint64_t hash;
   uint16_t name_len;
+  uint64_t hash;
   mc_entry_t *head;
   mc_entry_t *tail;
 } mc_metric_t;
@@ -117,15 +129,15 @@ typedef struct {
   uint32_t size;
   uint32_t count;
   mc_metric_t **metrics;
-} mc_sub_bucket_t;
+} mc_sub_slot_t;
 
 typedef struct {
   #ifdef TAGGED
   uint32_t tag;
   #endif
-  mc_sub_bucket_t subs[SUBS];
+  mc_sub_slot_t subs[SUBS];
   mc_metric_t *largest[LCOUNT];
-} mc_bucket_t;
+} mc_slot_t;
 
 typedef struct {
   #ifdef TAGGED
@@ -133,7 +145,7 @@ typedef struct {
   #endif
   uint8_t v;
   size_t alloc;
-  mc_bucket_t *buckets;
+  mc_slot_t *slots;
 } mc_gen_t;
 
 typedef struct {
@@ -141,24 +153,55 @@ typedef struct {
   uint32_t tag;
   #endif
   uint64_t max_alloc;
-  uint32_t buckets;
+  uint64_t slots;
   uint64_t age_cycle;
-  uint16_t initial_data_size;
-  uint16_t initial_entries;
+  uint64_t initial_data_size;
+  uint64_t initial_entries;
   uint64_t hash_seed;
   uint64_t max_gap;
 } mc_conf_t;
 
-typedef struct {
+typedef struct mc_bucket {
   #ifdef TAGGED
   uint32_t tag;
   #endif
-  mc_conf_t conf;
   uint32_t inserts;
   uint32_t age;
   mc_gen_t g0;
   mc_gen_t g1;
   mc_gen_t g2;
+  uint64_t hash;
+  uint8_t *name;
+  uint16_t name_len;
+} mc_bucket_t;
+
+#define BKT_GROWTH 20;
+typedef struct {
+  #ifdef TAGGED
+  uint32_t tag;
+  #endif
+  mc_conf_t conf;
+  uint32_t bucket_count;
+  uint32_t bucket_size;
+  mc_bucket_t **buckets;
 } mcache_t;
+
+typedef struct {
+  mc_bucket_t *bucket;
+  mc_metric_t *metric;
+} mc_reply_t;
+
+
+ErlNifResourceType* mcache_t_handle;
+static ERL_NIF_TERM atom_ok;
+static ERL_NIF_TERM atom_undefined;
+static ERL_NIF_TERM atom_overflow;
+
+
+// Print functions
+void print_cache(mcache_t *cache);
+
+// info
+ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache);
 
 #endif // MC_H_INCLUDED

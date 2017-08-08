@@ -4,36 +4,17 @@
 
 -compile(export_all).
 
-run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite) ->
-    Acc = {0, 0},
-    run_all_points(Mod, State, MetricCount, 1, PointsPerMetric, PointsPerWrite,
-                   Acc).
-
-
-run_all_points(_Mod, _State, _MetricCount, _PointsPerMetric, _PointsPerMetric,
-               _PointsPerWrite, Acc) ->
+run_bench(_Mod, _State, [], Acc) ->
     Acc;
-
-run_all_points(Mod, State, MetricCount, I, PointsPerMetric,
-               PointsPerWrite, Acc) ->
-    Acc1 = write_all_metrics(Mod, State, MetricCount, I, PointsPerWrite, Acc),
-    run_all_points(Mod, State, MetricCount, I + 1, PointsPerMetric,
-                   PointsPerWrite, Acc1).
-
-write_all_metrics(_Mod, _State, 0, _I, _PointsPerWrite, Acc) ->
-    Acc;
-write_all_metrics(Mod, State, MetricCount, I, PointsPerWrite, {C, W}) ->
-    Metric = integer_to_binary(MetricCount),
-    Value = << <<I:64>> || _ <- lists:seq(1, PointsPerWrite) >>,
-    Time = I,
-    Res = Mod:do_put(Metric, Time*PointsPerWrite, Value, State),
-    Acc1 = {C + length(Res),
-            W + lists:sum([N || {write, N} <- Res])},
-    write_all_metrics(Mod, State, MetricCount - 1, I, PointsPerWrite, Acc1).
+run_bench(Mod, State, [{Bucket, Metric, Time, Value} | R], {C, W}) ->
+    Res = Mod:do_put(Bucket, Metric, Time, Value, State),
+    Acc = {C + length(Res),
+           W + lists:sum([N || {write, N} <- Res])},
+    run_bench(Mod, State, R, Acc).
 
 -define(CACHE_POINTS, 100).
 
-bench_new(MetricCount, Opts, PointsPerMetric, PointsPerWrite) ->
+bench_new(MetricCount, Opts, Data) ->
     Mod = mc_new_cache,
     %% equivalent to cache points *2 to take into account ets overhead
     %% handled by
@@ -47,15 +28,15 @@ bench_new(MetricCount, Opts, PointsPerMetric, PointsPerWrite) ->
         + (200094 * 8 div 10000) * MetricCount
         ,
     State = Mod:init([CacheBytes, Opts]),
-    {WritesO, WrittenO} = run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite),
+    {WritesO, WrittenO} = run_bench(Mod, State, Data, {0, 0}),
     %%io:format(user, "~p~n", [mcache:stats(State)]),
     {WritesO, WrittenO, CacheBytes}.
 
-bench_old(MetricCount, PointsPerMetric, PointsPerWrite) ->
+bench_old(MetricCount, Data) ->
     Mod = mc_old_cache,
     CachePoints = ?CACHE_POINTS,
     State = Mod:init(CachePoints),
-    {WritesO, WrittenO} = run_bench(Mod, State, MetricCount, PointsPerMetric, PointsPerWrite),
+    {WritesO, WrittenO} = run_bench(Mod, State, Data, {0, 0}),
     Info = Mod:info(State),
     Mod:stop(State),
     Mem = proplists:get_value(memory, Info),
@@ -63,12 +44,35 @@ bench_old(MetricCount, PointsPerMetric, PointsPerWrite) ->
     {WritesO, WrittenO, Mem * 8 + Cnt * ?CACHE_POINTS * 8 + MetricCount * 4
      + MetricCount * 3}.
 
--define(MCOUNT, 10000).
+-define(MCOUNT, 2000).
 -define(PPM, 1000).
 -define(PPW, 1).
 
-new_run(MetricCount, PointsPerMetric, PointsPerWrite, Opts) ->
-    Args = [MetricCount, Opts, PointsPerMetric div PointsPerWrite, PointsPerWrite],
+
+make_datapoints(MetricCount, PointsPerMetric, PointsPerWrite) ->
+    
+    Acc = make_all_points(MetricCount, 0, PointsPerMetric div PointsPerWrite, PointsPerWrite, []),
+    lists:reverse(Acc).
+
+make_all_points(_MetricCount, _PointsPerMetric, _PointsPerMetric, _PointsPerWrite, Acc) ->
+    Acc;
+
+make_all_points(MetricCount, I, PointsPerMetric, PointsPerWrite, Acc) ->
+    Acc1 = points_for_time(MetricCount, I, PointsPerWrite, Acc),
+    make_all_points(MetricCount, I + 1, PointsPerMetric, PointsPerWrite, Acc1).
+
+points_for_time(0, _I, _PointsPerWrite, Acc) ->
+    Acc;
+points_for_time(MetricCount, I, PointsPerWrite, Acc) ->
+    Metric = integer_to_binary(MetricCount),
+    Bucket = integer_to_binary(MetricCount rem 10),
+    Value = << <<I:64>> || _ <- lists:seq(1, PointsPerWrite) >>,
+    Time = I * PointsPerWrite,
+    Acc1 = [{Bucket, Metric, Time, Value} | Acc],
+    points_for_time(MetricCount - 1, I, PointsPerWrite, Acc1).
+
+new_run(MetricCount, PointsPerWrite, Opts, Data) ->
+    Args = [MetricCount, Opts, Data],
     {TN, {WritesN, WrittenN, Mem}} =
         timer:tc(?MODULE, bench_new, Args),
     io:format(user, "~nNew[~3b]: ~15b | ~15b | ~15b | ~15b | ~w",
@@ -76,11 +80,20 @@ new_run(MetricCount, PointsPerMetric, PointsPerWrite, Opts) ->
 
 
 old_run(MetricCount, PointsPerMetric, PointsPerWrite) ->
-    Args = [MetricCount, PointsPerMetric div PointsPerWrite, PointsPerWrite],
+    Data = make_datapoints(MetricCount, PointsPerMetric, PointsPerWrite),
+    Args = [MetricCount, Data],
     {TO, {WritesO, WrittenO, Mem}} =
         timer:tc(?MODULE, bench_old, Args),
     io:format(user, "~nOld[~3b]: ~15b | ~15b | ~15b | ~15b",
               [PointsPerWrite, TO, WritesO, WrittenO, Mem]).
+
+points_for_time_test_() ->
+    {timeout, 60,
+     fun() ->
+             io:format(user, "~p~n", [make_datapoints(10, 2, 1)]),
+             io:format(user, "~p~n", [make_datapoints(10, 2, 2)]),
+             ?assert(true)
+     end}.
 
 bench_01_old_test_() ->
     {timeout, 60,
@@ -102,19 +115,18 @@ bench_11_new_test_() ->
      fun () ->
              MetricCount = ?MCOUNT,
              PointsPerMetric = ?PPM,
-             lists:foreach(fun (Bkts) ->
-                                   Opts = [{buckets, Bkts}],
-                                   new_run(MetricCount, PointsPerMetric, 1,
-                                           Opts),
-                                   erlang:garbage_collect(),
-                                   new_run(MetricCount, PointsPerMetric,
-                                           10, Opts),
-                                   erlang:garbage_collect(),
-                                   new_run(MetricCount, PointsPerMetric,
-                                           100, Opts),
-                                   erlang:garbage_collect()
-                           end, [32, 64, 128, 256, 512]),
-
+             lists:foreach(
+               fun (PointsPerWrite) ->
+                       Data = make_datapoints(MetricCount, PointsPerMetric, PointsPerWrite),
+                       lists:foreach(
+                         fun(Bkts) ->
+                                 Opts = [{buckets, Bkts}],
+                                 new_run(MetricCount, PointsPerWrite, Opts, Data),
+                                 erlang:garbage_collect()
+                         end,
+                         [32, 64, 128, 256, 512]),
+                       erlang:garbage_collect()
+               end, [1, 10, 100]),
              ?assert(true)
      end}.
 

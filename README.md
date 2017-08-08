@@ -1,4 +1,4 @@
-# mcache
+# mcache [![Build Status](https://travis-ci.org/dalmatinerdb/mcache.svg?branch=master)](https://travis-ci.org/dalmatinerdb/mcache)
 MCache is a cache specialised to deal with ingesting metrics. While it is written in the context of DalmatinerDB it is currently functional to store any array 64 bit allinged binary values.
 
 
