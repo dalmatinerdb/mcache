@@ -20,12 +20,12 @@ dialyzer:
   tags:
     - erlang-19
 
-eunit:
-  stage: test
-  script:
-    - ./rebar3 eunit
-  tags:
-    - erlang-19
+#eunit:
+#  stage: test
+#  script:
+#    - ./rebar3 eunit
+#  tags:
+#    - erlang-19
 
 eqc:
   stage: eqc
