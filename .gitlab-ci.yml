@@ -36,7 +36,7 @@ eqc:
     - unzip eqcmini-2.01.0.zip
     - cd ..
     - epmd &
-    - ./rebar3 as eqc eqc
+    - ./rebar3 as local eqc
   tags:
     - erlang-19
 
