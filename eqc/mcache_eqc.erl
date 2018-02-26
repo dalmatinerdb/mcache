@@ -5,7 +5,7 @@
 -compile(export_all).
 
 %%-define(LOCAL, 1).
-
+-define(SIZE, 16).
 %%====================================================================
 %% Generators & Helpers
 %%====================================================================
@@ -19,7 +19,7 @@ add_t(T, N, O, V) ->
 
 set_points(_, <<>>, Acc) ->
     Acc;
-set_points(O, <<V:8/binary, Vs/binary>>, Acc) ->
+set_points(O, <<V:?SIZE/binary, Vs/binary>>, Acc) ->
     set_points(O + 1, Vs, maps:put(O, V, Acc)).
 
 new(Size, Opts) ->
@@ -33,8 +33,9 @@ insert({H, T, Ds}, Gap, B, N, O, V) ->
             {H, T1, Ds};
         {overflow, {B1, K}, Data} ->
             T1 = add_t(T, {B, N}, O, V),
-            T2 = maps:remove(K, T1),
-            {H, T2, [{shrink_t(Data, 0), shrink_t(maps:get({B1, K}, T1), Gap)} | Ds]}
+            T2 = maps:remove({B1, K}, T1),
+            Ds1 = [{shrink_t(Data, 0), shrink_t(maps:get({B1, K}, T1), Gap)} | Ds],
+            {H, T2, Ds1}
     end.
 
 stats({H, T, Ds}) ->
@@ -68,7 +69,7 @@ get({H, T, Ds}, B, N) ->
     {H, T, Ds}.
 
 val() ->
-    ?LET(Ns, ?SUCHTHAT(L, list(nat()), L /= []), << <<N:64>> || N <- Ns >>).
+    ?LET(Ns, ?SUCHTHAT(L, list(nat()), L /= []), << <<N:64, N:64>> || N <- Ns >>).
 
 key() ->
     utf8().
@@ -132,7 +133,7 @@ all_keys_c(H, Acc) ->
 size_c([], N) ->
     N;
 size_c([{_O, D} | R], N) ->
-    size_c(R, N + byte_size(D) div 8).
+    size_c(R, N + byte_size(D) div ?SIZE).
 
 all_keys_t(T, Gap) ->
     L = maps:to_list(T),
@@ -150,8 +151,8 @@ shrink_t(L, Gap) when is_list(L)->
     shrink_t(lists:sort(L), Gap, []).
 
 shrink_t([{N, D}, {N1, D1} | R], Gap, Acc)
-  when N  + (byte_size(D) div 8) + Gap >= N1 ->
-    Missing = (N1 - (N + (byte_size(D) div 8))) * 8 * 8,
+  when N  + (byte_size(D) div ?SIZE) + Gap >= N1 ->
+    Missing = (N1 - (N + (byte_size(D) div ?SIZE))) * ?SIZE * 8,
     shrink_t([{N, <<D/binary, 0:Missing, D1/binary>>} | R], Gap, Acc);
 shrink_t([E | R], Gap, Acc) ->
     shrink_t(R, Gap, [E | Acc]);

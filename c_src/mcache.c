@@ -73,11 +73,11 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (!enif_inspect_binary(env, argv[4], &value)) {
     return enif_make_badarg(env);
   };
-  if (value.size % sizeof(uint64_t)) {
+  if (value.size % sizeof(mc_value_t)) {
     return enif_make_badarg(env);
   }
   mc_reply_t reply = insert(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size, offset,
-                            (uint64_t *) value.data, value.size / 8);
+                            (mc_value_t *) value.data, value.size / sizeof(mc_value_t));
   if (reply.metric) {
     ERL_NIF_TERM name = serialize_reply_name(env, reply);
     ERL_NIF_TERM data = metric_serialize(env, reply.metric);

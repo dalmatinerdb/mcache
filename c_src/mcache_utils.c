@@ -13,6 +13,5 @@ uint8_t meq(uint8_t *left, uint8_t *right, size_t count) {
       return 0;
     }
   }
-
   return 1;
 }

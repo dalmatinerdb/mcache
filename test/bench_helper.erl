@@ -84,6 +84,7 @@ old_run(MetricCount, PointsPerMetric, PointsPerWrite) ->
     io:format(user, "~nOld[~3b]: ~15b | ~15b | ~15b | ~15b",
               [PointsPerWrite, TO, WritesO, WrittenO, Mem]).
 
+-ifdef(BENCH).
 points_for_time_test_() ->
     {timeout, 60,
      fun() ->
@@ -126,3 +127,4 @@ bench_11_new_test_() ->
                end, [1, 10, 100]),
              ?assert(true)
      end}.
+-endif.

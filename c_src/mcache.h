@@ -97,6 +97,12 @@
 #define TAG_DATA_L    0xFFFFFFFFFFFFFF11
 #define TAG_METRIC_L  0xFFFFFFFFFFFFFF12
 */
+#define empty_value  (mc_value_t) { .value = 0, .ts = 0 }
+
+typedef struct mc_value {
+  ErlNifUInt64 value;
+  ErlNifUInt64 ts;
+} mc_value_t;
 
 typedef struct  mc_entry {
   #ifdef TAGGED
@@ -105,7 +111,7 @@ typedef struct  mc_entry {
   ErlNifSInt64 start;
   uint32_t count;
   uint32_t size;
-  ErlNifUInt64 *data;
+  mc_value_t *data;
   struct mc_entry *next;
 } mc_entry_t;
 

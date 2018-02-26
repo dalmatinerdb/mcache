@@ -393,7 +393,7 @@ void bucket_age(mc_bucket_t *bucket, mc_conf_t conf) {
   init_slots(conf, &(bucket->g0));
 }
 void bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, size_t name_len,
-                   uint64_t offset, uint64_t *value, size_t value_len) {
+                   uint64_t offset, mc_value_t* value, size_t value_len) {
   uint64_t slot;
   mc_metric_t *metric;
 

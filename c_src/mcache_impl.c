@@ -116,7 +116,7 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   return reply;
 }
 
-mc_reply_t insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len) {
+mc_reply_t insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len, uint64_t offset, mc_value_t *value, size_t value_len) {
   mc_reply_t reply = {NULL, NULL};
   reply.bucket = find_bucket(cache, bkt, bkt_len);
   if (!reply.bucket) {
@@ -134,8 +134,6 @@ mc_reply_t insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, 
   }
   bucket_insert(reply.bucket, cache->conf, name, name_len, offset, value, value_len);
   return check_limit(cache, cache->conf.max_alloc);
-  
-  
 }
 
 mc_reply_t take(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len) {
