@@ -236,22 +236,20 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
       bucket->g2.alloc) {
     return NULL;
   }
-  // If we don't have g2 entries we age so g1 becomes
-  // g2
+  // Start with cehcking g2
   mc_gen_t *gen = &(bucket->g2);
 
+  // If we don't have g2 entires check g1
   if (gen->alloc == 0) {
     gen = &(bucket->g1);
   }
 
-  // If we still have no g2 entries we aga again,
-  // this way g0 effectively becomes g0
+  // If we still have no g1 check g0
   if (gen->alloc == 0) {
     gen = &(bucket->g0);
   }
 
-  // if we still have no g2 entries we know it's
-  // all for nothing and just give up
+  // if we have no g0 entries we have no entries at all
   if (gen->alloc == 0) {
     return NULL;
   }
@@ -261,8 +259,8 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
 
   //TODO: This is not good!
   mc_metric_t *metric = NULL;
-  mc_sub_slot_t *largest_sub =  NULL;
-  mc_slot_t *largest_slot =  NULL;
+  mc_sub_slot_t *largest_sub = NULL;
+  mc_slot_t *largest_slot = NULL;
   int metric_idx = 0;
   // try to find a metric using the largest bucket first
   for (int b = 0; b < conf.slots; b++) {
