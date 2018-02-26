@@ -14,7 +14,7 @@ static mc_bucket_t* find_bucket(mcache_t* cache, uint8_t *name, size_t name_len)
       // is found quicker in the foture. This of cause only makes sense if we
       // are not at the first bucket anyway.
       if (b > 0) {
-        mc_bucket_t* last = cache->buckets[b];
+        mc_bucket_t* last = cache->buckets[b - 1];
         // if this bucket has more writes then the previous one we flip it
         if (
             // If this bucket has aged more
