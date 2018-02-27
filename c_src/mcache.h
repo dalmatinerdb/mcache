@@ -186,6 +186,7 @@ typedef struct {
   mc_conf_t conf;
   uint32_t bucket_count;
   uint32_t bucket_size;
+  double   evict_multiplyer;
   mc_bucket_t **buckets;
 } mcache_t;
 

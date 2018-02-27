@@ -124,6 +124,16 @@ uint64_t cache_alloc(mcache_t* cache) {
  * a metric matching the requirements, in that case we'll look for
  * something that is allocated at half the average so instead if 50%
  * 25%, then 12.5% and so on.
+ *
+ * In addition to that we keep a eviciton mutliplyer that is applied
+ * to the first limit. The multiplyer is a percentage of how the
+ * average is adjusted on the first computations.
+ * This is done to reflect different usages better, the multiplyer
+ * will be raised by 1% for every successful eviction, and lowered
+ * by 1% for every re-try.
+ * Ideally this way it'll adopt to the current state of the cahce
+ * and result in only reqyiner a re-try every second eviction at
+ * max.
  */
 static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   dprint("[start] check limit\r\n");
@@ -159,7 +169,7 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   }
 
 
-  uint64_t min_size = alloc / count;
+  uint64_t min_size = (alloc / count) * cache->evict_multiplyer;
 
   dprint("check limit: count: %llu\r\n", count);
   dprint("check limit: min_size: %llu\r\n", min_size);
@@ -189,11 +199,17 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
       reply.metric = bucket_check_limit(reply.bucket, cache->conf, min_size);
       if (reply.metric) {
         dprint("[end] check limit: found a metric, returning\r\n");
+        // If we found something we add one percent to the multiplyer to
+        // increase the max on the next runl;
+        cache->evict_multiplyer += 0.01;
         return reply;
       }
     }
     dprint("check limit: found nothing\r\n");
-    // If we screwed up we half our search parameter unless we found zero 
+
+    // If we screwed up we half our search parameter unless we found zero,
+    // we also reduce the evict multiplyer by 1% to start off lower next time
+    cache->evict_multiplyer -= 0.01;
     if (min_size == 0) {
       return reply;
     } else if (min_size == 1) {
@@ -266,6 +282,7 @@ mcache_t* cache_init(mc_conf_t config) {
   cache->conf = config;
   cache->bucket_size = BKT_GROWTH;
   cache->bucket_count = 0;
+  cache->evict_multiplyer = 1.0;
   cache->buckets = mc_alloc(sizeof(mc_bucket_t*) * cache->bucket_size);
   return cache;
 }

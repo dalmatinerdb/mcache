@@ -335,6 +335,7 @@ prop_stats() ->
                  [{conf, _Cfg},
                   {alloc, _Alloc},
                   {count, _Count},
+                  {evict_multiplyer, _},
                   {buckets, Bkts}] = remote_eval(stats_body, [Cache]),
                  R = filter_buckets(Bkts, []),
                  ?WHENFAIL(io:format(user, "Bkts: ~p~n",

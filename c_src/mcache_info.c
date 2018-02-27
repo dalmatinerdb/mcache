@@ -99,7 +99,7 @@ ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache) {
     buckets = enif_make_list_cell(env, bucket_info(env, bucket, cache->conf), buckets);
   };
   //bucket_info(env, cache->bucket, cache->conf)
-  return enif_make_list4(env,
+  return enif_make_list5(env,
                          conf,
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "alloc"),
@@ -107,6 +107,9 @@ ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache) {
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "count"),
                                           enif_make_uint64(env, cache_count(cache))),
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "evict_multiplyer"),
+                                          enif_make_double(env, cache->evict_multiplyer)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "buckets"),
                                           buckets));
