@@ -327,7 +327,7 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
     largest_sub->count--;
     gen->count--;
     gen->alloc -= metric->alloc;
-    bucket->evictions--;
+    bucket->evictions++;
   }
   return metric;
   // now we work on exporting the metric
