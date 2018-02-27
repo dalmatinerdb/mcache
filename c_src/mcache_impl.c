@@ -123,7 +123,7 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   for (uint64_t b = 0; b < cache->bucket_count; b++) {
     uint64_t c = bucket_count(cache->buckets[b]);
     uint64_t a = bucket_alloc(cache->buckets[b]);
-    if (best_ratio == 0 || (c > 0  && best_ratio < a / c)) {
+    if (c > 0 && (best_ratio == 0 || best_ratio < a / c)) {
       bkt_offset = b;
       best_ratio = a / c;
     }
