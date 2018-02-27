@@ -108,11 +108,11 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
 
   // We want to free something that's above the averagte size so
   // we aim for that
-  uint64_t size = cache_count(cache);
-  dprint("check limit: size: %u\r\n", size);
+  uint64_t count = cache_count(cache);
+  dprint("check limit: count: %u\r\n", count);
   uint64_t alloc = cache_alloc(cache);
   dprint("check limit: alloc: %u\r\n", alloc);
-  uint64_t min_size = alloc / size;
+  uint64_t min_size = alloc / count;
 
   dprint("check limit: min_size: %u\r\n", min_size);
 

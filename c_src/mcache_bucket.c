@@ -251,6 +251,12 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
     return NULL;
   }
 
+  // We ignore min_size if we're in the 3rd generation (v=2) as we always want to evict
+  // those first.
+  if (gen->v == 2) {
+    min_size = 0;
+  }
+
   //we know we have at least 1 entrie so we grab the alst one
   // and reduce the count and reduce the alloc;
 
@@ -262,10 +268,10 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
   // try to find a metric using the largest bucket first
   for (int b = 0; b < conf.slots; b++) {
     if (gen->slots[b].largest[0] &&
-        (!metric ||
-         (metric->alloc < gen->slots[b].largest[0]->alloc &&
-          metric->alloc >= min_size // Only count if we are above average allocation
-          ))) {
+        // Only check if we are above average allocation
+        gen->slots[b].largest[0]->alloc >= min_size &&
+        // if we already have a metdic check if we are larger
+        (!metric || (metric->alloc < gen->slots[b].largest[0]->alloc))) {
       largest_slot = &(gen->slots[b]);
       metric = largest_slot->largest[0];
       largest_sub = &(largest_slot->subs[subid(metric->hash)]);
@@ -301,10 +307,10 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
       // If we found a non empty slot we find the largest metric in there to
       // evict, that way we can can free up the 'most sensible' thing;
       for (int j = 0; j < slot->subs[sub].count; j++) {
-        if (!metric ||
-            (
-             slot->subs[sub].metrics[j]->alloc >= metric->alloc &&
-             metric->alloc >= min_size
+        // only set the metric if we're over the minimum size
+        if (slot->subs[sub].metrics[j]->alloc >= min_size &&
+            (!metric ||
+             slot->subs[sub].metrics[j]->alloc >= metric->alloc
              )) {
           metric_idx = j;
           largest_sub = &(slot->subs[sub]);
@@ -312,14 +318,16 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
         }
       }
     }
-
   }
-  if (metric_idx != largest_sub->count - 1) {
-    largest_sub->metrics[metric_idx] = largest_sub->metrics[largest_sub->count - 1];
+  // Only reindex if we found a metric
+  if (metric) {
+    if (metric_idx != largest_sub->count - 1) {
+      largest_sub->metrics[metric_idx] = largest_sub->metrics[largest_sub->count - 1];
+    }
+    largest_sub->count--;
+    gen->count--;
+    gen->alloc -= metric->alloc;
   }
-  largest_sub->count--;
-  gen->count--;
-  gen->alloc -= metric->alloc;
   return metric;
   // now we work on exporting the metric
 }
