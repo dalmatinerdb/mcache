@@ -201,7 +201,11 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
         dprint("[end] check limit: found a metric, returning\r\n");
         // If we found something we add one percent to the multiplyer to
         // increase the max on the next runl;
-        cache->evict_multiplyer += 0.01;
+
+        if (max_alloc) {
+          // don't increment for max_alloc == 0 (aka pop)
+          cache->evict_multiplyer += 0.01;
+        }
         return reply;
       }
     }
