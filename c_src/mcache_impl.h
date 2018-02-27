@@ -17,4 +17,7 @@ void cache_free(mcache_t* c);
 ERL_NIF_TERM serialize_reply_name(ErlNifEnv* env, mc_reply_t reply);
 void remove_bucket(mcache_t* cache, uint8_t *name, size_t name_len);
 
+uint64_t cache_count(mcache_t* cache);
+uint64_t cache_alloc(mcache_t* cache);
+
 #endif // MC_IMPL_H_INCLUDED

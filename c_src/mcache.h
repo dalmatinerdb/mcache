@@ -145,6 +145,7 @@ typedef struct {
   #endif
   uint8_t v;
   size_t alloc;
+  uint64_t count;
   mc_slot_t *slots;
 } mc_gen_t;
 
@@ -181,6 +182,7 @@ typedef struct {
   uint32_t tag;
   #endif
   mc_conf_t conf;
+
   uint32_t bucket_count;
   uint32_t bucket_size;
   mc_bucket_t **buckets;

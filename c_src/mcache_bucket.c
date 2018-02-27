@@ -171,6 +171,7 @@ static mc_metric_t *find_metric_and_remove_g(mc_conf_t conf, mc_gen_t *gen, uint
       }
       remove_largest(&(gen->slots[slot]), m);
       gen->slots[slot].subs[sub].count--;
+      gen->count--;
       gen->alloc -= m->alloc;
       return m;
     }
@@ -226,16 +227,12 @@ mc_metric_t *bucket_get_metric(mc_bucket_t *bucket, mc_conf_t conf, uint64_t has
   bucket->g0.alloc += metric->alloc;
   s->metrics[s->count] = metric;
   s->count++;
+  bucket->g0.count++;
   insert_largest(b, metric);
   return metric;
 };
 
-mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t max_alloc) {
-  if (max_alloc > bucket->g0.alloc +
-      bucket->g1.alloc +
-      bucket->g2.alloc) {
-    return NULL;
-  }
+mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t min_size) {
   // Start with cehcking g2
   mc_gen_t *gen = &(bucket->g2);
 
@@ -265,7 +262,10 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
   // try to find a metric using the largest bucket first
   for (int b = 0; b < conf.slots; b++) {
     if (gen->slots[b].largest[0] &&
-        (!metric || metric->alloc < gen->slots[b].largest[0]->alloc)) {
+        (!metric ||
+         (metric->alloc < gen->slots[b].largest[0]->alloc &&
+          metric->alloc >= min_size // Only count if we are above average allocation
+          ))) {
       largest_slot = &(gen->slots[b]);
       metric = largest_slot->largest[0];
       largest_sub = &(largest_slot->subs[subid(metric->hash)]);
@@ -301,7 +301,11 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
       // If we found a non empty slot we find the largest metric in there to
       // evict, that way we can can free up the 'most sensible' thing;
       for (int j = 0; j < slot->subs[sub].count; j++) {
-        if (!metric || slot->subs[sub].metrics[j]->alloc >= metric->alloc) {
+        if (!metric ||
+            (
+             slot->subs[sub].metrics[j]->alloc >= metric->alloc &&
+             metric->alloc >= min_size
+             )) {
           metric_idx = j;
           largest_sub = &(slot->subs[sub]);
           metric = largest_sub->metrics[j];
@@ -314,6 +318,7 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
     largest_sub->metrics[metric_idx] = largest_sub->metrics[largest_sub->count - 1];
   }
   largest_sub->count--;
+  gen->count--;
   gen->alloc -= metric->alloc;
   return metric;
   // now we work on exporting the metric
@@ -343,6 +348,7 @@ mc_metric_t* bucket_find_metric(mc_bucket_t *bucket, mc_conf_t conf, uint64_t ha
 
 void bucket_age(mc_bucket_t *bucket, mc_conf_t conf) {
   dprint("age\r\n");
+  bucket->g2.count += bucket->g1.count;
   for (int b = 0; b < conf.slots; b++) {
     // G1 -> G2
     for (int s = 0; s < SUBS; s++) {
@@ -379,6 +385,7 @@ void bucket_age(mc_bucket_t *bucket, mc_conf_t conf) {
       bucket->g1.slots[b].largest[l] = NULL;
     }
   }
+  // reset g1 count
   // free g1 slots (we copied the content to g2)
   mc_free(bucket->g1.slots);
   // move g0 slots to g1
@@ -386,6 +393,8 @@ void bucket_age(mc_bucket_t *bucket, mc_conf_t conf) {
 
   bucket->g2.alloc += bucket->g1.alloc;
   bucket->g1.alloc = bucket->g0.alloc;
+  bucket->g1.count = bucket->g0.count;
+  bucket->g0.count = 0;
   bucket->g0.alloc = 0;
   // reinitialize g0
   init_slots(conf, &(bucket->g0));
@@ -427,6 +436,14 @@ uint8_t bucket_is_empty(mc_bucket_t *bucket) {
   return bucket->g0.alloc == 0 && bucket->g1.alloc == 0 && bucket->g2.alloc == 0;
 };
 
+uint64_t bucket_count(mc_bucket_t *bucket) {
+  return bucket->g0.count + bucket->g1.count + bucket->g2.count;
+}
+
+uint64_t bucket_alloc(mc_bucket_t *bucket) {
+  return bucket->g0.alloc + bucket->g1.alloc + bucket->g2.alloc;
+}
+
 mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
   dprint("bucket_init\r\n");
   mc_bucket_t *bucket;
@@ -448,6 +465,7 @@ mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
   //now set up the tree genreations
   bucket->g0.v = 0;
   bucket->g0.alloc = 0;
+  bucket->g0.count = 0;
 #ifdef TAGGED
   bucket->g0.tag = TAG_GEN;
 #endif
@@ -455,6 +473,7 @@ mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
 
   bucket->g1.v = 1;
   bucket->g1.alloc = 0;
+  bucket->g1.count = 0;
 #ifdef TAGGED
   bucket->g1.tag = TAG_GEN;
 #endif
@@ -462,6 +481,7 @@ mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
 
   bucket->g2.v = 2;
   bucket->g2.alloc = 0;
+  bucket->g2.count = 0;
 #ifdef TAGGED
   bucket->g2.tag = TAG_GEN;
 #endif

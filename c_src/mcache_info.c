@@ -32,13 +32,16 @@ gen_stats(ErlNifEnv* env, mc_conf_t conf, mc_gen_t gen) {
     }
   };
 
-  return enif_make_list3(env,
+  return enif_make_list4(env,
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "alloc"),
                                           enif_make_uint64(env, gen.alloc)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "count"),
                                           enif_make_uint64(env, count)),
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "g_count"),
+                                          enif_make_uint64(env, gen.count)),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "size"),
                                           enif_make_uint64(env, size)));
@@ -53,7 +56,7 @@ static ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket, mc_conf_t c
 
   return enif_make_tuple2(env,
                           name,
-                          enif_make_list6(env,
+                          enif_make_list7(env,
                                           enif_make_tuple2(env,
                                                            enif_make_atom(env, "age"),
                                                            enif_make_uint64(env, bucket->age)),
@@ -61,11 +64,11 @@ static ERL_NIF_TERM bucket_info(ErlNifEnv* env, mc_bucket_t *bucket, mc_conf_t c
                                                            enif_make_atom(env, "inserts"),
                                                            enif_make_uint64(env, bucket->inserts)),
                                           enif_make_tuple2(env,
-                                                           enif_make_atom(env, "total_alloc"),
-                                                           enif_make_uint64(env,
-                                                                            bucket->g0.alloc +
-                                                                            bucket->g1.alloc +
-                                                                            bucket->g2.alloc)),
+                                                           enif_make_atom(env, "alloc"),
+                                                           enif_make_uint64(env, bucket_alloc(bucket))),
+                                          enif_make_tuple2(env,
+                                                           enif_make_atom(env, "count"),
+                                                           enif_make_uint64(env, bucket_count(bucket))),
                                           enif_make_tuple2(env,
                                                            enif_make_atom(env, "gen0"),
                                                            gen_stats(env, conf, bucket->g0)),
@@ -90,8 +93,14 @@ ERL_NIF_TERM cache_info(ErlNifEnv* env, mcache_t *cache) {
     buckets = enif_make_list_cell(env, bucket_info(env, bucket, cache->conf), buckets);
   };
   //bucket_info(env, cache->bucket, cache->conf)
-  return enif_make_list2(env,
+  return enif_make_list4(env,
                          conf,
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "alloc"),
+                                          enif_make_uint64(env, cache_alloc(cache))),
+                         enif_make_tuple2(env,
+                                          enif_make_atom(env, "count"),
+                                          enif_make_uint64(env, cache_count(cache))),
                          enif_make_tuple2(env,
                                           enif_make_atom(env, "buckets"),
                                           buckets));

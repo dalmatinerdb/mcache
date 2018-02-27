@@ -9,5 +9,7 @@ mc_metric_t* bucket_get_metric(mc_bucket_t *bucket, mc_conf_t conf, uint64_t has
 mc_metric_t* bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t max_alloc);
 void bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len);
 mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len);
+uint64_t bucket_count(mc_bucket_t *bucket);
+uint64_t bucket_alloc(mc_bucket_t *bucket);
 
 #endif // MC_BUCKET_H_INCLUDED

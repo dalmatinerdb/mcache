@@ -300,6 +300,46 @@ prop_remove_bucket() ->
                            Ds1 == [])
              end))).
 
+
+stats_body(Cache) ->
+    {H, _T, _Ds} = eval(Cache),
+    mcache:stats(H).
+
+filter_buckets([], Acc) ->
+    Acc;
+
+filter_buckets([{_,
+                 [{age, _},
+                  {inserts, _},
+                  {alloc, _},
+                  {count, _},
+                  {gen0,[{alloc, _}, {count, C1}, {g_count, C1}, {size, _}]},
+                  {gen1,[{alloc, _}, {count, C2}, {g_count, C2}, {size, _}]},
+                  {gen2,[{alloc, _}, {count, C3}, {g_count, C3}, {size, _}]}]} | R],
+              Acc) ->
+    filter_buckets(R, Acc);
+filter_buckets([E | R], Acc) ->
+    filter_buckets(R, [E | Acc]).
+
+
+prop_stats() ->
+    ?SETUP(
+       fun setup/0,
+       ?FORALL(
+          {MaxSize, Gap, Opts}, {c_size(), nat(), opts()},
+          ?FORALL(
+             Cache, cache(MaxSize, Gap, Opts),
+             begin
+                 [{conf, _Cfg},
+                  {alloc, _Alloc},
+                  {count, _Count},
+                  {buckets, Bkts}] = remote_eval(stats_body, [Cache]),
+                 R = filter_buckets(Bkts, []),
+                 ?WHENFAIL(io:format(user, "Bkts: ~p~n",
+                                     [R]),
+                           R == [])
+             end))).
+
 map_comp_body(Cache, MaxGap) ->
     {H, T, Ds} = eval(Cache),
     TreeKs = all_keys_t(T, MaxGap),

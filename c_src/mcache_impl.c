@@ -79,40 +79,79 @@ uint8_t is_empty(mcache_t* cache) {
   return 1;
 }
 
+uint64_t cache_count(mcache_t* cache) {
+  uint64_t count = 0;
+  for (uint32_t b = 0; b < cache->bucket_count; b++) {
+    count += bucket_count(cache->buckets[b]);
+  };
+  return count;
+}
+
+uint64_t cache_alloc(mcache_t* cache) {
+  uint64_t alloc = 0;
+  for (uint32_t b = 0; b < cache->bucket_count; b++) {
+    alloc += bucket_alloc(cache->buckets[b]);
+  };
+  return alloc;
+}
+
 
 static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
-  dprint("check limit\r\n");
+  dprint("[start] check limit\r\n");
+
   mc_reply_t reply = {NULL, NULL};
-  if (size(cache) < max_alloc || !cache->bucket_count) {
-    dprint("check limit: 1\r\n");
+  if (size(cache) <= max_alloc || !cache->bucket_count) {
+    dprint("check limit: we're good no need to check anything\r\n");
     return reply;
   }
-  dprint("check limit: 2\r\n");
-  uint64_t bucket_quota = max_alloc / cache->bucket_count;
-  dprint("check limit: 3 [cache->bucket_count] %ul\r\n", cache->bucket_count);
-  // we traverse bacwards as the least accessed item is supposed to be
-  // at the end
-  for (int64_t b = cache->bucket_count - 1; b >= 0; b--) {
-    dprint("check limit: 4 [b]: %lld\r\n", b);
-    reply.bucket = cache->buckets[b];
-    // if we are the last bucket and are emtpy we free ourselfs and continue
-    // down the road.
-    // This way unused buckes, over time, will be freed.
-    if (b == cache->bucket_count - 1 && bucket_is_empty(reply.bucket)) {
-      dprint("This is the last bucket and it's empty, bye.\r\n");
-      bucket_free(reply.bucket, cache->conf);
-      reply.bucket = NULL;
-      cache->buckets[b] = NULL;
-      cache->bucket_count--;
-      continue;
+
+
+  // We want to free something that's above the averagte size so
+  // we aim for that
+  uint64_t size = cache_count(cache);
+  dprint("check limit: size: %u\r\n", size);
+  uint64_t alloc = cache_alloc(cache);
+  dprint("check limit: alloc: %u\r\n", alloc);
+  uint64_t min_size = alloc / size;
+
+  dprint("check limit: min_size: %u\r\n", min_size);
+
+  // It cound be that due to overhead we can't find anything so we loop here.
+  while (!reply.metric) {
+    dprint("check limit: 2 %u\r\n", min_size);
+    dprint("check limit: 3 [cache->bucket_count] %u\r\n", cache->bucket_count);
+    // we traverse bacwards as the least accessed item is supposed to be
+    // at the end
+    for (int64_t b = cache->bucket_count - 1; b >= 0; b--) {
+      dprint("check limit: 4 [b]: %lld\r\n", b);
+      reply.bucket = cache->buckets[b];
+      // if we are the last bucket and are emtpy we free ourselfs and continue
+      // down the road.
+      // This way unused buckes, over time, will be freed.
+      if (b == cache->bucket_count - 1 && bucket_is_empty(reply.bucket)) {
+        dprint("This is the last bucket and it's empty, bye.\r\n");
+        bucket_free(reply.bucket, cache->conf);
+        reply.bucket = NULL;
+        cache->buckets[b] = NULL;
+        cache->bucket_count--;
+        continue;
+      }
+      reply.metric = bucket_check_limit(reply.bucket, cache->conf, min_size);
+      if (reply.metric) {
+        dprint("[end] check limit: found a metric, returning\r\n");
+        return reply;
+      }
     }
-    reply.metric = bucket_check_limit(reply.bucket, cache->conf, bucket_quota);
-    if (reply.metric) {
-      dprint("check limit: found a metric\r\n");
+    dprint("check limit: found nothing\r\n");
+    // If we screwed up we half our search parameter unless we found zero 
+    if (min_size == 0) {
       return reply;
+    } else if (min_size == 1) {
+        min_size = 0;
+    } else {
+      min_size /= 2;
     }
   }
-  dprint("check limit: found nothing\r\n");
   return reply;
 }
 
@@ -134,8 +173,8 @@ mc_reply_t insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, 
   }
   bucket_insert(reply.bucket, cache->conf, name, name_len, offset, value, value_len);
   return check_limit(cache, cache->conf.max_alloc);
-  
-  
+
+
 }
 
 mc_reply_t take(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len) {
@@ -213,4 +252,4 @@ ERL_NIF_TERM serialize_reply_name(ErlNifEnv* env, mc_reply_t reply) {
   mcache:insert(H, <<"b">>, <<>>, 0, <<0,0,0,0,0,0,0,0>>).
   mcache:pop(H).
   mcache:pop(H).
- */
+*/
