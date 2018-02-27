@@ -51,17 +51,6 @@ void remove_bucket(mcache_t* cache, uint8_t *name, size_t name_len) {
   }
 }
 
-uint64_t size(mcache_t* cache) {
-  uint64_t alloc = 0;
-  for (uint32_t b = 0; b < cache->bucket_count; b++) {
-    mc_bucket_t* bucket = cache->buckets[b];
-    alloc += bucket->g0.alloc;
-    alloc += bucket->g1.alloc;
-    alloc += bucket->g2.alloc;
-  };
-  return alloc;
-}
-
 void age(mcache_t* cache) {
   for (uint32_t b = 0; b < cache->bucket_count; b++) {
     mc_bucket_t* bucket = cache->buckets[b];
@@ -96,28 +85,61 @@ uint64_t cache_alloc(mcache_t* cache) {
 }
 
 
+/*
+ * This is the code used for eviction, it is probably the most tricky
+ * part of mcache so it warrents some explenation.
+ *
+ * Eviction is something we basically don't want to happen however
+ * since we're bounded on space it will eventually have to happen.
+ *
+ * We have a few things to keep in mind:
+ *
+ * - We want to evict large caches over small caches, as they lead
+ *   to fewer evictions over time and help with reducing the number
+ *   of IO opperations (which are the devil).
+ *
+ * - We also want to avoid searching over the entire cache as we could
+ *   potentially have a large number of metrics to look at.
+ *
+ * - We also want to evict rarely used data more then we want to evict
+ *   recently accessed data - that way stall metrics get tossed out
+ *   to make space for active ones.
+ *
+ * With that goals we do a few things to optmize eviction. First of
+ * all we know the allocation size and the number of elements for each
+ * bucket.
+ *
+ * With that knowledge we start with two things:
+ *
+ * 1) We calculate the average allocation / metric (allocation/count)
+ *    and will try to evict only metrics that are above average.
+ * 2) We start with the bucket that has the worst allocation / count
+ *    ratio as it is most likely to find a large metric in that.
+ * 3) In addition buckets are sorted based on activity, with the
+ *    most active bucket being at slot 0 and the least active on
+ *    at slot N. Knowing this we're moving backwards through them
+ *    to rather evict inactive metrics thena active ones.
+ *
+ * There is a chance that given the above constraints we do not find
+ * a metric matching the requirements, in that case we'll look for
+ * something that is allocated at half the average so instead if 50%
+ * 25%, then 12.5% and so on.
+ */
 static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   dprint("[start] check limit\r\n");
 
   mc_reply_t reply = {NULL, NULL};
-  if (size(cache) <= max_alloc || !cache->bucket_count) {
-    dprint("check limit: we're good no need to check anything\r\n");
-    return reply;
-  }
 
 
   // We want to free something that's above the averagte size so
   // we aim for that
-  uint64_t count = cache_count(cache);
-  dprint("check limit: count: %llu\r\n", count);
+  uint64_t count = 0;
   uint64_t alloc = cache_alloc(cache);
-  dprint("check limit: alloc: %llu\r\n", alloc);
-  uint64_t min_size = alloc / count;
-
-  dprint("check limit: min_size: %llu\r\n", min_size);
 
   // find the bucket with the worst alloc vs count ratio as it will
-  // have most likely the most 'tasty' content
+  // have most likely the most 'tasty' content. We also use this
+  // to callculate alloc and count so we don't have to itterate over
+  // the buckets multiple times.
   uint64_t bkt_offset = cache->bucket_count;
   double best_ratio = 0;
   for (uint64_t b = 0; b < cache->bucket_count; b++) {
@@ -127,7 +149,22 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
       bkt_offset = b;
       best_ratio = a / c;
     }
+    count += c;
+    alloc += a;
   };
+
+  if (alloc <= max_alloc || !cache->bucket_count) {
+    dprint("check limit: we're good no need to check anything\r\n");
+    return reply;
+  }
+
+
+  uint64_t min_size = alloc / count;
+
+  dprint("check limit: count: %llu\r\n", count);
+  dprint("check limit: min_size: %llu\r\n", min_size);
+  dprint("check limit: alloc: %llu\r\n", alloc);
+
   // It cound be that due to overhead we can't find anything so we loop here.
   while (!reply.metric) {
     dprint("check limit: 2 %llu\r\n", min_size);
