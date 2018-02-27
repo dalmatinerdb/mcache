@@ -166,6 +166,8 @@ typedef struct mc_bucket {
   #ifdef TAGGED
   uint32_t tag;
   #endif
+  uint64_t total_inserts;
+  uint64_t evictions;
   uint64_t inserts;
   uint32_t age;
   mc_gen_t g0;
@@ -182,7 +184,6 @@ typedef struct {
   uint32_t tag;
   #endif
   mc_conf_t conf;
-
   uint32_t bucket_count;
   uint32_t bucket_size;
   mc_bucket_t **buckets;

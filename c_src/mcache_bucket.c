@@ -327,6 +327,7 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
     largest_sub->count--;
     gen->count--;
     gen->alloc -= metric->alloc;
+    bucket->evictions--;
   }
   return metric;
   // now we work on exporting the metric
@@ -424,6 +425,7 @@ void bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, size_t na
   insert_largest(&(bucket->g0.slots[slot]), metric);
 
   bucket->inserts++;
+  bucket->total_inserts++;
   if (bucket->inserts > conf.age_cycle) {
     bucket_age(bucket, conf);
     bucket->age++;
@@ -464,6 +466,8 @@ mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
   // some bucket wqide counters
   bucket->inserts = 0;
   bucket->age = 0;
+  bucket->evictions = 0;
+  bucket->total_inserts = 0;
 
   bucket->name_len = name_len;
   bucket->name = mc_alloc(name_len * sizeof(uint8_t));

@@ -311,6 +311,8 @@ filter_buckets([], Acc) ->
 filter_buckets([{_,
                  [{age, _},
                   {inserts, _},
+                  {total_inserts, _},
+                  {evictions, _},
                   {alloc, _},
                   {count, _},
                   {gen0,[{alloc, _}, {count, C1}, {g_count, C1}, {size, _}]},
