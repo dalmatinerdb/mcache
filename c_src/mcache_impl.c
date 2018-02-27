@@ -109,20 +109,33 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   // We want to free something that's above the averagte size so
   // we aim for that
   uint64_t count = cache_count(cache);
-  dprint("check limit: count: %u\r\n", count);
+  dprint("check limit: count: %llu\r\n", count);
   uint64_t alloc = cache_alloc(cache);
-  dprint("check limit: alloc: %u\r\n", alloc);
+  dprint("check limit: alloc: %llu\r\n", alloc);
   uint64_t min_size = alloc / count;
 
-  dprint("check limit: min_size: %u\r\n", min_size);
+  dprint("check limit: min_size: %llu\r\n", min_size);
 
+  // find the bucket with the worst alloc vs count ratio as it will
+  // have most likely the most 'tasty' content
+  uint64_t bkt_offset = cache->bucket_count;
+  double best_ratio = 0;
+  for (uint64_t b = 0; b < cache->bucket_count; b++) {
+    uint64_t c = bucket_count(cache->buckets[b]);
+    uint64_t a = bucket_alloc(cache->buckets[b]);
+    if (best_ratio == 0 || (c > 0  && best_ratio < a / c)) {
+      bkt_offset = b;
+      best_ratio = a / c;
+    }
+  };
   // It cound be that due to overhead we can't find anything so we loop here.
   while (!reply.metric) {
-    dprint("check limit: 2 %u\r\n", min_size);
+    dprint("check limit: 2 %llu\r\n", min_size);
     dprint("check limit: 3 [cache->bucket_count] %u\r\n", cache->bucket_count);
     // we traverse bacwards as the least accessed item is supposed to be
     // at the end
-    for (int64_t b = cache->bucket_count - 1; b >= 0; b--) {
+    for (int64_t bkt_i = 0; bkt_i < cache->bucket_count; bkt_i++) {
+      uint64_t b = (bkt_offset - bkt_i) % cache->bucket_count;
       dprint("check limit: 4 [b]: %lld\r\n", b);
       reply.bucket = cache->buckets[b];
       // if we are the last bucket and are emtpy we free ourselfs and continue
