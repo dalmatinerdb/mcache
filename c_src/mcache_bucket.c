@@ -232,7 +232,7 @@ mc_metric_t *bucket_get_metric(mc_bucket_t *bucket, mc_conf_t conf, uint64_t has
   return metric;
 };
 
-mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t min_size) {
+mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t min_size, uint64_t *tests) {
   // Start with cehcking g2
   mc_gen_t *gen = &(bucket->g2);
 
@@ -267,6 +267,7 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
   int metric_idx = 0;
   // try to find a metric using the largest bucket first
   for (int b = 0; b < conf.slots; b++) {
+    (*tests)++;
     if (gen->slots[b].largest[0] &&
         // Only check if we are above average allocation
         gen->slots[b].largest[0]->alloc >= min_size &&
@@ -308,6 +309,7 @@ mc_metric_t * bucket_check_limit(mc_bucket_t *bucket, mc_conf_t conf, uint64_t m
       // evict, that way we can can free up the 'most sensible' thing;
       for (int j = 0; j < slot->subs[sub].count; j++) {
         // only set the metric if we're over the minimum size
+        (*tests)++;
         if (slot->subs[sub].metrics[j]->alloc >= min_size &&
             (!metric ||
              slot->subs[sub].metrics[j]->alloc >= metric->alloc

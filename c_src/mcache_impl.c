@@ -152,6 +152,7 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   // the buckets multiple times.
   uint64_t bkt_offset = cache->bucket_count;
   double best_ratio = 0;
+
   for (uint64_t b = 0; b < cache->bucket_count; b++) {
     uint64_t c = bucket_count(cache->buckets[b]);
     uint64_t a = bucket_alloc(cache->buckets[b]);
@@ -170,13 +171,13 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
 
 
   uint64_t min_size = (alloc / count) * cache->evict_multiplyer;
-
   dprint("check limit: count: %llu\r\n", count);
   dprint("check limit: min_size: %llu\r\n", min_size);
   dprint("check limit: alloc: %llu\r\n", alloc);
 
   // It cound be that due to overhead we can't find anything so we loop here.
   while (!reply.metric) {
+    uint64_t tests = 0; // Number of metrics wehad to check
     dprint("check limit: 2 %llu\r\n", min_size);
     dprint("check limit: 3 [cache->bucket_count] %u\r\n", cache->bucket_count);
     // we traverse bacwards as the least accessed item is supposed to be
@@ -196,7 +197,7 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
         cache->bucket_count--;
         continue;
       }
-      reply.metric = bucket_check_limit(reply.bucket, cache->conf, min_size);
+      reply.metric = bucket_check_limit(reply.bucket, cache->conf, min_size, &tests);
       if (reply.metric) {
         dprint("[end] check limit: found a metric, returning\r\n");
         // If we found something we add one percent to the multiplyer to
@@ -204,7 +205,13 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
 
         if (max_alloc) {
           // don't increment for max_alloc == 0 (aka pop)
-          cache->evict_multiplyer += 0.01;
+          if (count > (tests * 3)) {
+            // and we found something while looking to the first third of metrics
+            cache->evict_multiplyer += 0.01;
+          } else {
+            // we didn't
+            cache->evict_multiplyer -= 0.01;
+          }
         }
         return reply;
       }
@@ -212,8 +219,8 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
     dprint("check limit: found nothing\r\n");
 
     // If we screwed up we half our search parameter unless we found zero,
-    // we also reduce the evict multiplyer by 1% to start off lower next time
-    cache->evict_multiplyer -= 0.01;
+    // we also reduce the evict multiplyer by 10% to start off lower next time
+    cache->evict_multiplyer -= 0.10;
     if (min_size == 0) {
       return reply;
     } else if (min_size == 1) {
