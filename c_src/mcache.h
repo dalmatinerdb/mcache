@@ -8,9 +8,13 @@
 #include "stdio.h"
 #include "xxhash.h"
 #include <stdint.h>
+#include "assert.h"
 
 #define SUBS 64
 #define LCOUNT 10
+
+#define HPTS_DATA_SIZE 2
+#define DATA_SIZE 1
 
 /*
  ┌────────────┐
@@ -166,6 +170,7 @@ typedef struct mc_bucket {
   #ifdef TAGGED
   uint32_t tag;
   #endif
+  size_t data_size;
   uint64_t total_inserts;
   uint64_t evictions;
   uint64_t inserts;
@@ -198,6 +203,8 @@ typedef struct {
 
 ErlNifResourceType* mcache_t_handle;
 static ERL_NIF_TERM atom_ok;
+static ERL_NIF_TERM atom_error;
+static ERL_NIF_TERM atom_bad_data_size;
 static ERL_NIF_TERM atom_undefined;
 static ERL_NIF_TERM atom_overflow;
 

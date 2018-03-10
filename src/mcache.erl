@@ -3,7 +3,7 @@
 -on_load(init/0).
 
 %% API exports
--export([new/2, pop/1, insert/5, print/1, stats/1, get/3, age/1,
+-export([new/2, pop/1, insert/5, insert_hpts/5, print/1, stats/1, get/3, age/1,
          take/3 , is_empty/1, remove_bucket/2
         ]).
 
@@ -75,8 +75,16 @@ pop(_Handle) ->
 
 -spec insert(mcache_handle(), bucket(), key(), offset(), values()) ->
                     ok |
+                    {error, bad_data_size} |
                     {overflow, {bucket(), key()}, chunks()}.
 insert(_Handle, _Bucket, _Name, _Offset, _Value) ->
+    erlang:nif_error(nif_library_not_loaded).
+
+-spec insert_hpts(mcache_handle(), bucket(), key(), offset(), values()) ->
+                    ok |
+                         {error, bad_data_size} |
+                    {overflow, {bucket(), key()}, chunks()}.
+insert_hpts(_Handle, _Bucket, _Name, _Offset, _Value) ->
     erlang:nif_error(nif_library_not_loaded).
 
 -spec get(mcache_handle(), bucket(), key()) ->

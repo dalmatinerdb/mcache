@@ -76,11 +76,73 @@ insert_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (value.size % sizeof(uint64_t)) {
     return enif_make_badarg(env);
   }
-  mc_reply_t reply = insert(cache, bucket_bin.data, bucket_bin.size, name_bin.data, name_bin.size, offset,
-                            (uint64_t *) value.data, value.size / 8);
+
+  mc_bucket_t* bucket = find_or_create_bucket(cache, bucket_bin.data, bucket_bin.size, DATA_SIZE);
+
+  if (! bucket) {
+    return  enif_make_tuple2(env,
+                             atom_error,
+                             atom_bad_data_size);
+  }
+  mc_reply_t reply = insert(cache, bucket, name_bin.data, name_bin.size, offset,
+                            (uint64_t *) value.data, value.size / (8 * DATA_SIZE));
   if (reply.metric) {
     ERL_NIF_TERM name = serialize_reply_name(env, reply);
-    ERL_NIF_TERM data = metric_serialize(env, reply.metric);
+    ERL_NIF_TERM data = metric_serialize(env, reply.metric, reply.bucket->data_size);
+    metric_free(reply.metric);
+    return  enif_make_tuple3(env,
+                             atom_overflow,
+                             name,
+                             data);
+  }
+  return atom_ok;
+};
+
+
+static ERL_NIF_TERM
+insert_hpts_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+  dprint("insert\r\n");
+  mcache_t *cache;
+  ErlNifUInt64 offset;
+  ErlNifBinary value;
+  ErlNifBinary name_bin;
+  ErlNifBinary bucket_bin;
+
+  if (argc != 5) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_get_resource(env, argv[0], mcache_t_handle, (void **)&cache)) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_inspect_binary(env, argv[1], &bucket_bin)) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_inspect_binary(env, argv[2], &name_bin)) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_get_uint64(env, argv[3], &offset)) {
+    return enif_make_badarg(env);
+  };
+  if (!enif_inspect_binary(env, argv[4], &value)) {
+    return enif_make_badarg(env);
+  };
+  if (value.size % sizeof(uint64_t)) {
+    return enif_make_badarg(env);
+  }
+
+  mc_bucket_t* bucket = find_or_create_bucket(cache, bucket_bin.data, bucket_bin.size, HPTS_DATA_SIZE);
+
+  if (! bucket) {
+    return  enif_make_tuple2(env,
+                             atom_error,
+                             atom_bad_data_size);
+  }
+
+  mc_reply_t reply = insert(cache, bucket, name_bin.data, name_bin.size, offset,
+                            (uint64_t *) value.data, value.size / (8 * HPTS_DATA_SIZE));
+  if (reply.metric) {
+    ERL_NIF_TERM name = serialize_reply_name(env, reply);
+    ERL_NIF_TERM data = metric_serialize(env, reply.metric, reply.bucket->data_size);
     metric_free(reply.metric);
     return  enif_make_tuple3(env,
                              atom_overflow,
@@ -114,7 +176,7 @@ get_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (reply.metric) {
     return  enif_make_tuple2(env,
                              atom_ok,
-                             metric_serialize(env, reply.metric));
+                             metric_serialize(env, reply.metric, reply.bucket->data_size));
   } else {
     return atom_undefined;
   }
@@ -144,7 +206,7 @@ take_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   if (reply.metric) {
     ERL_NIF_TERM res = enif_make_tuple2(env,
                                         atom_ok,
-                                        metric_serialize(env, reply.metric));
+                                        metric_serialize(env, reply.metric, reply.bucket->data_size));
     metric_free(reply.metric);
     return res;
   } else {
@@ -167,7 +229,7 @@ pop_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   // We cheat here, we can create a 'pop' by just checkig for a 0 limit.
   mc_reply_t reply = pop(cache);
   if (reply.metric) {
-    ERL_NIF_TERM data = metric_serialize(env, reply.metric);
+    ERL_NIF_TERM data = metric_serialize(env, reply.metric, reply.bucket->data_size);
     ERL_NIF_TERM name = serialize_reply_name(env, reply);
     metric_free(reply.metric);
     return  enif_make_tuple3(env,
@@ -278,6 +340,8 @@ load(ErlNifEnv* env, void** priv, ERL_NIF_TERM load_info)
                                             0);
   atom_undefined = enif_make_atom(env, "undefined");
   atom_ok = enif_make_atom(env, "ok");
+  atom_error = enif_make_atom(env, "error");
+  atom_bad_data_size = enif_make_atom(env, "bad_data_size");
   atom_overflow = enif_make_atom(env, "overflow");
   return 0;
 }
@@ -299,6 +363,7 @@ static ErlNifFunc nif_funcs[] = {
   {"get", 3, get_nif},
   {"take", 3, take_nif},
   {"insert", 5, insert_nif},
+  {"insert_hpts", 5, insert_hpts_nif},
 };
 
 // Initialize this NIF library.

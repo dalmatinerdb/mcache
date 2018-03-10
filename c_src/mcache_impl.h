@@ -11,11 +11,12 @@ uint8_t is_empty(mcache_t *cache);
 mc_reply_t take(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len);
 mc_reply_t get(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len);
 mc_reply_t pop(mcache_t *cache);
-mc_reply_t insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len);
-
+mc_reply_t insert(mcache_t* cache, mc_bucket_t* bucket, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len);
 void cache_free(mcache_t* c);
 ERL_NIF_TERM serialize_reply_name(ErlNifEnv* env, mc_reply_t reply);
 void remove_bucket(mcache_t* cache, uint8_t *name, size_t name_len);
+
+mc_bucket_t* find_or_create_bucket(mcache_t* cache, uint8_t *bkt, size_t bkt_len, size_t data_size);
 
 uint64_t cache_count(mcache_t* cache);
 uint64_t cache_alloc(mcache_t* cache);

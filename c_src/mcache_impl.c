@@ -231,11 +231,9 @@ static mc_reply_t check_limit(mcache_t* cache, uint64_t max_alloc) {
   }
   return reply;
 }
-
-mc_reply_t insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len) {
-  mc_reply_t reply = {NULL, NULL};
-  reply.bucket = find_bucket(cache, bkt, bkt_len);
-  if (!reply.bucket) {
+mc_bucket_t* find_or_create_bucket(mcache_t* cache, uint8_t *bkt, size_t bkt_len, size_t data_size) {
+  mc_bucket_t* bucket = find_bucket(cache, bkt, bkt_len);
+  if (!bucket) {
     // grow buckets if needed
     if (cache->bucket_size == cache->bucket_count) {
       cache->bucket_size *= 2;
@@ -244,14 +242,24 @@ mc_reply_t insert(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, 
       mc_free(cache->buckets);
       cache->buckets = new_buckets;
     }
-    reply.bucket = bucket_init(cache->conf, bkt, bkt_len);
-    cache->buckets[cache->bucket_count] = reply.bucket;
+    bucket = bucket_init(cache->conf, data_size, bkt, bkt_len);
+    cache->buckets[cache->bucket_count] = bucket;
     cache->bucket_count++;
+    return bucket;
+  } else {
+    if (bucket->data_size != data_size) {
+      // size mismacth!
+      return NULL;
+    } else {
+      return bucket;
+    }
   }
-  bucket_insert(reply.bucket, cache->conf, name, name_len, offset, value, value_len);
+
+};
+
+mc_reply_t insert(mcache_t* cache, mc_bucket_t* bucket, uint8_t *name, size_t name_len, uint64_t offset, uint64_t *value, size_t value_len) {
+  bucket_insert(bucket, cache->conf, name, name_len, offset, value, value_len);
   return check_limit(cache, cache->conf.max_alloc);
-
-
 }
 
 mc_reply_t take(mcache_t* cache, uint8_t *bkt, size_t bkt_len, uint8_t *name, size_t name_len) {

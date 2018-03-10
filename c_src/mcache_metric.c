@@ -16,9 +16,9 @@ void metric_free(mc_metric_t *m) {
   mc_free(m);
 }
 
-static ERL_NIF_TERM serialize_entry(ErlNifEnv* env, mc_entry_t *entry) {
+static ERL_NIF_TERM serialize_entry(ErlNifEnv* env, mc_entry_t *entry, size_t data_size) {
   ERL_NIF_TERM data;
-  size_t to_copy = entry->count * sizeof(ErlNifUInt64);
+  size_t to_copy = entry->count * sizeof(ErlNifUInt64) * data_size;
   unsigned char *datap = enif_make_new_binary(env, to_copy, &data);
   memcpy(datap, entry->data, to_copy);
   return  enif_make_tuple2(env,
@@ -27,7 +27,7 @@ static ERL_NIF_TERM serialize_entry(ErlNifEnv* env, mc_entry_t *entry) {
 
 }
 
-ERL_NIF_TERM metric_serialize(ErlNifEnv* env, mc_metric_t *metric) {
+ERL_NIF_TERM metric_serialize(ErlNifEnv* env, mc_metric_t *metric, size_t data_size) {
   if (! metric) {
     return atom_undefined;
   }
@@ -35,21 +35,21 @@ ERL_NIF_TERM metric_serialize(ErlNifEnv* env, mc_metric_t *metric) {
   ERL_NIF_TERM reverse;
   mc_entry_t *entry = metric->head;
   while (entry) {
-    result = enif_make_list_cell(env, serialize_entry(env, entry), result);
+    result = enif_make_list_cell(env, serialize_entry(env, entry, data_size), result);
     entry = entry->next;
   }
   enif_make_reverse_list(env, result, &reverse);
   return reverse;
 }
 
-void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, uint64_t offset, size_t count, uint64_t* values) {
+void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, size_t data_size, uint64_t offset, size_t count, uint64_t* values) {
   // If eitehr we have no data yet or the current data is larger then
   // the offset we generate a new metric.
   // In both cases next will be the current head given that next might
   // be empty and it's needed to set next to empty for the first element.
   mc_entry_t *entry = NULL;
   if((!metric->head) || offset < metric->head->start) {
-    size_t alloc = sizeof(ErlNifUInt64) * MAX(conf.initial_data_size, count * 2);
+    size_t alloc = sizeof(ErlNifUInt64) * data_size * MAX(conf.initial_data_size, count * 2);
     entry = mc_alloc(sizeof(mc_entry_t));
     entry->start = offset;
     entry->size = conf.initial_data_size;
@@ -98,7 +98,7 @@ void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, uint64
       // we allocate at least as much memory as we need for our data
       // so we don't need to allocate twice for bigger blocks
       next->size = MAX(conf.initial_data_size, count);
-      uint64_t alloc = next->size * sizeof(ErlNifUInt64);
+      uint64_t alloc = next->size * sizeof(ErlNifUInt64) * data_size;
       // create the new entry with the given offset
       next->start = offset;
       // reserve the data
@@ -106,7 +106,7 @@ void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, uint64
 
 #ifdef TAGGED
       next->tag = TAG_ENTRY;
-      for (int i = 0; i < next->size; i++) {
+      for (int i = 0; i < next->size  * data_size; i++) {
         next->data[i] = TAG_DATA_L;
       }
 #endif
@@ -146,26 +146,26 @@ void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, uint64
       dprint("new range %ld->%llu(%lld)\r\n", entry->start, entry->start + new_count, entry->start + new_size);
 
 
-      ErlNifUInt64 *new_data = (ErlNifUInt64 *) mc_alloc(new_size * sizeof(ErlNifUInt64));
+      ErlNifUInt64 *new_data = (ErlNifUInt64 *) mc_alloc(new_size * sizeof(ErlNifUInt64) * data_size);
 #ifdef TAGGED
-      for (int i = 0; i < new_size; i++) {
+      for (int i = 0; i < new_size * data_size; i++) {
         new_data[i] = TAG_DATA_L;
       }
 #endif
 
       // recalculate the allocation
-      metric->alloc -= (entry->size * sizeof(ErlNifUInt64));
-      gen->alloc -= (entry->size * sizeof(ErlNifUInt64));
+      metric->alloc -= (entry->size * sizeof(ErlNifUInt64) * data_size);
+      gen->alloc -= (entry->size * sizeof(ErlNifUInt64) * data_size);
 
-      metric->alloc -= (next->size * sizeof(ErlNifUInt64));
-      gen->alloc -= (next->size * sizeof(ErlNifUInt64));
+      metric->alloc -= (next->size * sizeof(ErlNifUInt64) * data_size);
+      gen->alloc -= (next->size * sizeof(ErlNifUInt64) * data_size);
 
-      metric->alloc += new_size * sizeof(ErlNifUInt64);
-      gen->alloc += new_size * sizeof(ErlNifUInt64);
+      metric->alloc += new_size * sizeof(ErlNifUInt64) * data_size;
+      gen->alloc += new_size * sizeof(ErlNifUInt64) * data_size;
 
       entry->next = next->next;
       // copy, free and reassign old data
-      memcpy(new_data, entry->data, entry->count * sizeof(ErlNifUInt64));
+      memcpy(new_data, entry->data, entry->count * sizeof(ErlNifUInt64) * data_size);
       mc_free(entry->data);
       entry->data = new_data;
       // set new size and count
@@ -177,13 +177,13 @@ void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, uint64
       dprint("copying points: %ld\r\n", next->start - entry->start);
 
       dprint("Filling between %u and %ld\r\n", entry->count, next->start - entry->start);
-      for (int i = entry->count; i < next->start - entry->start; i++) {
+      for (int i = entry->count * data_size; i < (next->start - entry->start) * data_size; i++) {
         entry->data[i] = 0;
       }
 
       entry->count = new_count;
 
-      memcpy(entry->data + next->start - entry->start, next->data, next->count* sizeof(ErlNifUInt64));
+      memcpy(entry->data + (next->start - entry->start) * data_size, next->data, next->count * sizeof(ErlNifUInt64) * data_size);
       mc_free(next->data);
       mc_free(next);
       // if we don't have a next we are now the tail!
@@ -205,30 +205,30 @@ void metric_add_point(mc_conf_t conf, mc_gen_t *gen, mc_metric_t *metric, uint64
 
       // prevent oddmath we just  removethe oldsizeand then add
       // the new size
-      metric->alloc -= (entry->size * sizeof(ErlNifUInt64));
-      gen->alloc -= (entry->size * sizeof(ErlNifUInt64));
+      metric->alloc -= (entry->size * sizeof(ErlNifUInt64) * data_size);
+      gen->alloc -= (entry->size * sizeof(ErlNifUInt64) * data_size);
 
-      ErlNifUInt64 *new_data = (ErlNifUInt64 *) mc_alloc(new_size * sizeof(ErlNifUInt64));
+      ErlNifUInt64 *new_data = (ErlNifUInt64 *) mc_alloc(new_size * sizeof(ErlNifUInt64) * data_size);
 #ifdef TAGGED
-      for (int i = 0; i < new_size; i++) {
+      for (int i = 0; i < new_size * data_size; i++) {
         new_data[i] = TAG_DATA_L;
       }
 #endif
 
-      memcpy(new_data, entry->data, entry->size * sizeof(ErlNifUInt64));
+      memcpy(new_data, entry->data, entry->size * sizeof(ErlNifUInt64) * data_size);
       mc_free(entry->data);
       entry->data = new_data;
       entry->size = new_size;
-      metric->alloc += (entry->size * sizeof(ErlNifUInt64));
-      gen->alloc += (entry->size * sizeof(ErlNifUInt64));
+      metric->alloc += (entry->size * sizeof(ErlNifUInt64) * data_size);
+      gen->alloc += (entry->size * sizeof(ErlNifUInt64) * data_size);
     }
 
     // fill gap with zeros
-    for (int i = entry->count; i < internal_offset; i++) {
+    for (int i = entry->count * data_size; i < internal_offset * data_size; i++) {
       entry->data[i] = 0;
     }
-
-    memcpy(entry->data + internal_offset, values, count * sizeof(ErlNifUInt64));
+    
+    memcpy(entry->data + internal_offset * data_size, values, count * sizeof(ErlNifUInt64) * data_size);
 
     entry->count = MAX(offset - entry->start + count, entry->count);
 

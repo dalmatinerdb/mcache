@@ -422,7 +422,7 @@ void bucket_insert(mc_bucket_t *bucket, mc_conf_t conf, uint8_t *name, size_t na
   metric = bucket_get_metric(bucket, conf, hash, name_len, name);
 
   // Add the datapoint
-  metric_add_point(conf, &(bucket->g0), metric, offset, value_len, value);
+  metric_add_point(conf, &(bucket->g0), metric, bucket->data_size, offset, value_len, value);
   // update largest
   insert_largest(&(bucket->g0.slots[slot]), metric);
 
@@ -456,7 +456,7 @@ uint64_t bucket_alloc(mc_bucket_t *bucket) {
   return bucket->g0.alloc + bucket->g1.alloc + bucket->g2.alloc;
 }
 
-mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
+mc_bucket_t* bucket_init(mc_conf_t config, size_t data_size, uint8_t *name, size_t name_len) {
   dprint("bucket_init\r\n");
   mc_bucket_t *bucket;
   bucket = mc_alloc(sizeof(mc_bucket_t));
@@ -470,6 +470,7 @@ mc_bucket_t* bucket_init(mc_conf_t config, uint8_t *name, size_t name_len) {
   bucket->age = 0;
   bucket->evictions = 0;
   bucket->total_inserts = 0;
+  bucket->data_size = data_size;
 
   bucket->name_len = name_len;
   bucket->name = mc_alloc(name_len * sizeof(uint8_t));
